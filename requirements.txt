@@ -1,0 +1,30 @@
+# Core
+pydub==0.25.1
+numpy==1.24.3
+Pillow==10.0.0
+
+
+
+
+# Utilities
+watchdog==3.0.0
+python-dotenv==1.0.0
+tqdm==4.66.1
+colorama==0.4.6
+
+# tkinterdnd2==0.3.0
+
+
+psutil>=5.9.0
+GPUtil>=1.4.0
+
+# GUI
+PySide6>=6.5.0
+
+
+# pip install -r requirements.txt
+# python -m venv venv
+# venv\Scripts\activate
+
+# 2. Cập nhật pip
+# python -m pip install --upgrade pip
