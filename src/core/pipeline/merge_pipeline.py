@@ -328,10 +328,13 @@ class MergePipeline:
         # Dùng filter_complex để trộn audio gốc (từ video) và audio đã xử lý
         cmd.extend([
             '-filter_complex',
-            '[0:a:0][1:a:0]amix=inputs=2:duration=longest[aout]'
+            '[0:a:0]volume=1.0[a0];'
+            '[1:a:0]volume=1.0[a1];'
+            '[a0][a1]amix=inputs=2:duration=longest:weights=1 1 [a_mix];'   # ⬅️ khoảng trắng trước [a_mix]
+            '[a_mix]alimiter=limit=1:level=1 [aout]'                         # ⬅️ khoảng trắng trước [aout]
         ])
-        cmd.extend(['-map', '0:v:0'])      # Video từ input đầu
-        cmd.extend(['-map', '[aout]'])     # Audio đã mix
+        cmd.extend(['-map', '0:v:0'])
+        cmd.extend(['-map', '[aout]'])
 
 
 
@@ -380,7 +383,7 @@ class MergePipeline:
         # Output settings for speed
         cmd.extend([
             '-movflags', '+faststart',  # For web playback
-            '-shortest',  # End when shortest stream ends
+            # '-shortest',  # End when shortest stream ends
             '-y'  # Overwrite output file
         ])
         

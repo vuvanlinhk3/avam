@@ -1,12 +1,12 @@
 {
   "output_dir": "G:/source_code_vd/avam_v4/output",
-  "output_filename": "dfsdfzvczxvz.mp4",
+  "output_filename": "3.mp4",
   "output_format": ".mp4",
-  "quality": "ultra_fast",
+  "quality": "high",
   "resolution": "1920x1080",
   "fps": 30,
   "use_gpu": true,
   "normalize_audio": true,
-  "fade_in_duration": 1.0,
+  "fade_in_duration": 4.0,
   "fade_out_duration": 1.0
 }
