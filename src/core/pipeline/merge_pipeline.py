@@ -149,7 +149,8 @@ class MergePipeline:
             output_path=merged_audio_path,
             normalize=audio_config.normalize_volume,
             fade_in=audio_config.fade_in_duration,
-            fade_out=audio_config.fade_out_duration
+            fade_out=audio_config.fade_out_duration,
+            volume=audio_config.volume
         )
         
         # Verify the merged audio file
@@ -246,18 +247,42 @@ class MergePipeline:
         audio_info = self.ffmpeg.get_media_info(merged_audio_path)
         total_duration = audio_info['duration']
         
-        # Build FFmpeg command
+        # 🆕 Tính toán filter_complex dựa trên cấu hình âm lượng và mute
+        any_video_audio = any(not seg.mute_audio for seg in project_config.video_config.video_segments)
+        video_audio_volume = project_config.video_config.audio_volume
+        audio_files_volume = project_config.audio_config.volume
+        
+        if any_video_audio:
+            # Có âm thanh từ video
+            filter_complex = (
+                f'[0:a:0]volume={video_audio_volume} [a0];'
+                f'[1:a:0]volume={audio_files_volume} [a1];'
+                f'[a0][a1]amix=inputs=2:duration=longest:weights=1 1 [a_mix];'
+                f'[a_mix]alimiter=limit=1:level=1 [aout]'
+            )
+        else:
+            # Tất cả video đều mute, chỉ có audio files
+            filter_complex = (
+                f'[1:a:0]volume={audio_files_volume} [a1];'
+                f'[a1]alimiter=limit=1:level=1 [aout]'
+            )
+        
+        # Build FFmpeg command, truyền filter_complex
         if output_config.quality == OutputQuality.ULTRA_FAST:
             cmd = self._build_gpu_optimized_command(
                 merged_audio_path, 
                 video_concat_path, 
-                output_config
+                output_config,
+                filter_complex=filter_complex,
+                any_video_audio=any_video_audio
             )
         else:
             cmd = self._build_ffmpeg_command(
                 merged_audio_path, 
                 video_concat_path, 
-                output_config
+                output_config,
+                filter_complex=filter_complex,
+                any_video_audio=any_video_audio
             )
         
         logger.info(f"Final FFmpeg command: {' '.join(cmd)}")
@@ -293,7 +318,9 @@ class MergePipeline:
     
     def _build_ffmpeg_command(self, audio_path: str, 
                              video_concat_path: str,
-                             output_config) -> List[str]:
+                             output_config,
+                             filter_complex: str = None,
+                             any_video_audio: bool = True) -> List[str]:
         """
         Build FFmpeg command for merging
         
@@ -301,6 +328,8 @@ class MergePipeline:
             audio_path: Path to audio file
             video_concat_path: Path to video concat list
             output_config: Output configuration
+            filter_complex: Custom filter_complex string
+            any_video_audio: Whether any video segment has audio enabled
             
         Returns:
             List of FFmpeg command arguments
@@ -322,22 +351,26 @@ class MergePipeline:
         # Audio input
         cmd.extend(['-i', audio_path])
         
+        # Sử dụng filter_complex được truyền vào
+        if filter_complex:
+            cmd.extend(['-filter_complex', filter_complex])
+        else:
+            # Fallback (giữ logic cũ nếu không có filter_complex)
+            cmd.extend([
+                '-filter_complex',
+                '[0:a:0][1:a:0]amix=inputs=2:duration=longest[aout]'
+            ])
+        
         # Map streams
-
-
-        # Dùng filter_complex để trộn audio gốc (từ video) và audio đã xử lý
-        cmd.extend([
-            '-filter_complex',
-            '[0:a:0]volume=1.0[a0];'
-            '[1:a:0]volume=1.0[a1];'
-            '[a0][a1]amix=inputs=2:duration=longest:weights=1 1 [a_mix];'   # ⬅️ khoảng trắng trước [a_mix]
-            '[a_mix]alimiter=limit=1:level=1 [aout]'                         # ⬅️ khoảng trắng trước [aout]
-        ])
-        cmd.extend(['-map', '0:v:0'])
-        cmd.extend(['-map', '[aout]'])
-
-
-
+        cmd.extend(['-map', '0:v:0'])  # Luôn lấy video từ input đầu
+        
+        # Map audio dựa trên filter_complex
+        if filter_complex and 'aout' in filter_complex:
+            cmd.extend(['-map', '[aout]'])
+        else:
+            # Fallback: map tất cả audio streams
+            cmd.extend(['-map', '0:a?', '-map', '1:a?'])
+        
         # Video encoding settings - OPTIMIZED FOR SPEED
         if output_config.use_gpu and self.gpu_encoder.is_gpu_available():
             encoder = self.gpu_encoder.get_best_encoder('h264')
@@ -375,15 +408,14 @@ class MergePipeline:
         else:
             cmd.extend(self._get_software_encoder_params(output_config))
         
-        # Audio encoding - luôn encode (vì đã dùng filter complex, không thể copy)
+        # Audio encoding
         quality_profile = EncoderProfiles.get_profile(output_config.quality)
         audio_bitrate = quality_profile.get('audio_bitrate', '192k')
         cmd.extend(['-c:a', 'aac', '-b:a', audio_bitrate])
         
-        # Output settings for speed
+        # Output settings
         cmd.extend([
             '-movflags', '+faststart',  # For web playback
-            # '-shortest',  # End when shortest stream ends
             '-y'  # Overwrite output file
         ])
         
@@ -393,10 +425,11 @@ class MergePipeline:
         logger.debug(f"Built FFmpeg command: {' '.join(cmd)}")
         return cmd
     
-        # ========== THÊM HÀM MỚI ==========
     def _build_gpu_optimized_command(self, audio_path: str,
                                      video_concat_path: str,
-                                     output_config) -> List[str]:
+                                     output_config,
+                                     filter_complex: str = None,
+                                     any_video_audio: bool = True) -> List[str]:
         """
         Build GPU optimized command for ultra-fast encoding
         
@@ -404,34 +437,59 @@ class MergePipeline:
             audio_path: Path to audio file
             video_concat_path: Path to video concat list
             output_config: Output configuration
+            filter_complex: Custom filter_complex string
+            any_video_audio: Whether any video segment has audio enabled
             
         Returns:
             List of FFmpeg command arguments
         """
         cmd = [
-            '-hwaccel', 'cuda',              # 🚀 Hardware acceleration cho decoding
-            '-hwaccel_output_format', 'cuda', # 🚀 Output format cho GPU
+            '-hwaccel', 'cuda',              # Hardware acceleration cho decoding
+            '-hwaccel_output_format', 'cuda', # Output format cho GPU
             '-f', 'concat',
             '-safe', '0',
             '-i', video_concat_path,
             '-i', audio_path,
-            '-filter_complex', '[0:a:0][1:a:0]amix=inputs=2:duration=longest[aout]',
-            '-map', '0:v:0',
-            '-map', '[aout]',
-            '-c:v', 'h264_nvenc',           # 🚀 NVENC encoder
-            '-preset', 'p1',                # 🚀 Fastest preset
-            '-tune', 'll',                  # 🚀 Low latency
-            '-rc', 'cbr',                   # 🚀 Constant bitrate (nhanh hơn VBR)
-            '-b:v', '8M',                   # 🚀 8 Mbps
-            '-c:a', 'aac', '-b:a', '192k',  # 🚀 Encode lại audio
+        ]
+        
+        # Sử dụng filter_complex được truyền vào
+        if filter_complex:
+            cmd.extend(['-filter_complex', filter_complex])
+        else:
+            # Fallback
+            cmd.extend(['-filter_complex', '[0:a:0][1:a:0]amix=inputs=2:duration=longest[aout]'])
+        
+        # Map streams
+        cmd.extend(['-map', '0:v:0'])
+        if filter_complex and 'aout' in filter_complex:
+            cmd.extend(['-map', '[aout]'])
+        else:
+            cmd.extend(['-map', '1:a?'])
+        
+        # Video encoding settings (NVENC)
+        cmd.extend([
+            '-c:v', 'h264_nvenc',
+            '-preset', 'p1',                # Fastest preset
+            '-tune', 'll',                  # Low latency
+            '-rc', 'cbr',                    # Constant bitrate
+            '-b:v', '8M',                    # 8 Mbps
+        ])
+        
+        # Audio encoding
+        quality_profile = EncoderProfiles.get_profile(output_config.quality)
+        audio_bitrate = quality_profile.get('audio_bitrate', '192k')
+        cmd.extend(['-c:a', 'aac', '-b:a', audio_bitrate])
+        
+        # Output settings
+        cmd.extend([
             '-movflags', '+faststart',
-            '-threads', '0',                # 🚀 Sử dụng tất cả CPU cores
+            '-threads', '0',
             '-y',
             output_config.output_path
-        ]
+        ])
+        
         return cmd
-    # ========== KẾT THÚC THÊM HÀM ==========
-
+    
     def _get_software_encoder_params(self, output_config) -> List[str]:
         """
         Get software encoder parameters - OPTIMIZED FOR SPEED
@@ -474,19 +532,16 @@ class MergePipeline:
             except:
                 pass
         
-        # Base time: 1-2 minutes for 30-120 minutes of audio
-        # Higher quality = slower encoding
-        # Base time: 1-2 minutes for 30-120 minutes of audio
-        # Higher quality = slower encoding
+        # Quality factor
         quality_factor = {
-            OutputQuality.ULTRA_FAST: 0.2,  # 🆕 Rất nhanh (20% thời gian bình thường)
+            OutputQuality.ULTRA_FAST: 0.2,
             OutputQuality.MEDIUM: 1.0,
             OutputQuality.HIGH: 1.5,
             OutputQuality.VERY_HIGH: 2.0,
             OutputQuality.ULTRA_HIGH: 3.0
         }.get(project_config.output_config.quality, 1.5)
         
-        # GPU acceleration reduces time
+        # GPU acceleration factor
         gpu_factor = 0.3 if project_config.output_config.use_gpu else 1.0
         
         # Estimated minutes

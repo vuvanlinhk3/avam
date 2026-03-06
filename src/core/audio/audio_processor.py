@@ -22,12 +22,37 @@ class AudioProcessor:
         """
         self.ffmpeg = ffmpeg_manager
     
+
+    def apply_volume(self, input_path: str, output_path: str, volume: float) -> str:
+        """
+        Điều chỉnh âm lượng của file audio.
+        """
+        if volume == 1.0:
+            # Không cần xử lý, copy nguyên bản
+            import shutil
+            shutil.copy2(input_path, output_path)
+            return output_path
+
+        cmd = [
+            '-i', input_path,
+            '-af', f'volume={volume}',
+            '-c:a', 'aac',
+            '-b:a', '192k',
+            '-y', output_path
+        ]
+        return_code, stdout, stderr = self.ffmpeg.execute_command(cmd)
+        if return_code != 0:
+            raise RuntimeError(f"Áp dụng volume thất bại: {stderr[:500]}")
+        return output_path
+
+
     def merge_audio_files(self, 
                          audio_files: List[Dict[str, Any]],
                          output_path: str,
                          normalize: bool = True,
                          fade_in: float = 0.0,
-                         fade_out: float = 0.0) -> str:
+                         fade_out: float = 0.0,
+                         volume: float = 1.0) -> str:
         """
         Merge multiple audio files into one
         
@@ -140,6 +165,15 @@ class AudioProcessor:
                 logger.warning(f"Output audio file is very small: {file_size} bytes")
             
             logger.info(f"Merged audio saved to: {output_path} ({file_size:,} bytes)")
+            
+            
+            merged_path = output_path  # tạm thời
+            if volume != 1.0:
+                vol_path = output_path.replace('.m4a', '_vol.m4a')
+                vol_path = self.apply_volume(merged_path, vol_path, volume)
+                os.replace(vol_path, output_path)  # ghi đè
+
+
             return output_path
             
         finally:

@@ -35,7 +35,8 @@ class AudioConfig:
     fade_in_duration: float = 1.0  # seconds
     fade_out_duration: float = 1.0  # seconds
     output_audio_path: str = ""
-    
+    volume: float = 4
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             'audio_files': self.audio_files,
@@ -56,7 +57,8 @@ class VideoSegmentConfig:
     position: VideoPosition = VideoPosition.MIDDLE
     loop_behavior: LoopStrategy = LoopStrategy.AUTO
     order: int = 0
-    
+    mute_audio: bool = False          # 🆕 Tắt âm thanh của video này
+    audio_volume: float = 1.0          # 🆕 Âm lượng nếu không tắt (0.0 - 2.0)
     def to_dict(self) -> Dict[str, Any]:
         return {
             'file_path': self.file_path,
@@ -77,7 +79,7 @@ class VideoConfig:
     """Configuration for video processing"""
     video_segments: List[VideoSegmentConfig] = field(default_factory=list)
     output_video_path: str = ""
-    
+    audio_volume: float = 1.0  # 🆕 Global volume cho video audio (nếu không mute)
     def to_dict(self) -> Dict[str, Any]:
         return {
             'video_segments': [seg.to_dict() for seg in self.video_segments],
