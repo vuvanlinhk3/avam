@@ -23,7 +23,8 @@ class AudioPanel(QWidget):
     
     def __init__(self):
         super().__init__()
-        self.audio_files = []
+        self.audio_files = []  # List để lưu thông tin file âm thanh
+        self.audio_file_paths = []  # List để lưu đường dẫn file âm thanh
         self.ffmpeg = FFmpegManager()
         self.audio_loader = AudioLoader(self.ffmpeg)
         self.init_ui()
@@ -41,7 +42,7 @@ class AudioPanel(QWidget):
         title_font.setBold(True)
         title_label.setFont(title_font)
         title_label.setAlignment(Qt.AlignCenter)
-        title_label.setStyleSheet("color: #2c3e50;")  # Xanh đậm-xám
+        title_label.setStyleSheet("color: #2c3e50;")
         
         # Vùng thả
         self.drop_area = QGroupBox("Kéo & Thả Tệp Âm Thanh Vào Đây")
@@ -50,7 +51,7 @@ class AudioPanel(QWidget):
         self.drop_area.setFixedHeight(120)
         drop_label = QLabel("Thả tệp MP3, WAV, AAC vào đây\nhoặc nhấn 'Thêm Tệp'")
         drop_label.setAlignment(Qt.AlignCenter)
-        drop_label.setStyleSheet("color: #5d6d7e; font-style: italic;")  # Xám trung bình
+        drop_label.setStyleSheet("color: #5d6d7e; font-style: italic;")
         
         # Nút thêm tệp
         add_files_btn = QPushButton("Thêm Tệp Âm Thanh")
@@ -71,6 +72,9 @@ class AudioPanel(QWidget):
         self.audio_list.setSelectionMode(QListWidget.ExtendedSelection)
         self.audio_list.itemDoubleClicked.connect(self.on_item_double_clicked)
         
+        # Kết nối tín hiệu drag & drop
+        self.audio_list.model().rowsMoved.connect(self.on_rows_moved)
+        
         # Nút điều khiển
         button_layout = QHBoxLayout()
         
@@ -86,7 +90,7 @@ class AudioPanel(QWidget):
         # Nhãn thông tin
         self.info_label = QLabel("Chưa có tệp âm thanh nào được thêm")
         self.info_label.setAlignment(Qt.AlignCenter)
-        self.info_label.setStyleSheet("color: #5d6d7e; font-size: 12px;")  # Xám trung bình
+        self.info_label.setStyleSheet("color: #5d6d7e; font-size: 12px;")
         
         # Thêm widget vào layout
         files_layout.addWidget(self.audio_list)
@@ -97,7 +101,7 @@ class AudioPanel(QWidget):
         layout.addWidget(files_group)
         layout.addWidget(self.info_label)
         
-        # Đặt style cho theme sáng
+        # Đặt style
         self.setStyleSheet("""
             QWidget {
                 background-color: #ffffff;
@@ -149,14 +153,12 @@ class AudioPanel(QWidget):
                 border-radius: 4px;
                 padding: 8px 16px;
                 font-weight: bold;
-                font-family: 'Segoe UI', 'Arial';
             }
             QPushButton:hover {
                 background-color: #2980b9;
             }
             QPushButton:pressed {
                 background-color: #1c5a7d;
-                padding: 9px 15px 7px 17px;
             }
             QPushButton:disabled {
                 background-color: #bdc3c7;
@@ -164,7 +166,6 @@ class AudioPanel(QWidget):
             }
         """)
         
-        # Thêm style cho vùng thả
         self.drop_area.setStyleSheet("""
             QGroupBox#drop_area {
                 border: 2px dashed #95a5a6;
@@ -201,6 +202,19 @@ class AudioPanel(QWidget):
         else:
             event.ignore()
     
+    def on_rows_moved(self, parent, start, end, destination, row):
+        """Xử lý khi hàng được di chuyển"""
+        # Cập nhật lại danh sách audio_file_paths theo thứ tự mới
+        new_order = []
+        for i in range(self.audio_list.count()):
+            item = self.audio_list.item(i)
+            file_path = item.data(Qt.UserRole)
+            new_order.append(file_path)
+        
+        # Cập nhật danh sách
+        self.audio_file_paths = new_order
+        self.files_reordered.emit(self.audio_file_paths)
+    
     @Slot()
     def add_audio_files(self):
         """Thêm tệp âm thanh qua hộp thoại"""
@@ -223,9 +237,22 @@ class AudioPanel(QWidget):
         
         for item in selected_items:
             file_path = item.data(Qt.UserRole)
-            self.file_removed.emit(file_path)
+            
+            # Xóa khỏi list UI
             row = self.audio_list.row(item)
             self.audio_list.takeItem(row)
+            
+            # Xóa khỏi danh sách audio_file_paths
+            if file_path in self.audio_file_paths:
+                self.audio_file_paths.remove(file_path)
+            
+            # Xóa khỏi audio_files
+            self.audio_files = [f for f in self.audio_files if f.get('path') != file_path]
+            
+            # Phát tín hiệu file đã xóa
+            self.file_removed.emit(file_path)
+        
+        self.update_info_label()
     
     @Slot()
     def clear_all_files(self):
@@ -244,36 +271,59 @@ class AudioPanel(QWidget):
         if reply == QMessageBox.Yes:
             self.audio_list.clear()
             self.audio_files = []
+            self.audio_file_paths = []
             self.update_info_label()
     
     @Slot(QListWidgetItem)
     def on_item_double_clicked(self, item):
         """Xử lý nhấp đúp vào mục"""
+        # Có thể hiển thị thông tin file
         file_path = item.data(Qt.UserRole)
-        # TODO: Hiển thị hộp thoại thông tin tệp
+        for audio_file in self.audio_files:
+            if audio_file.get('path') == file_path:
+                info = audio_file.get('info', {})
+                msg = (f"Đường dẫn: {file_path}\n"
+                      f"Thời lượng: {info.get('duration', 0):.2f}s\n"
+                      f"Định dạng: {info.get('format', 'Unknown')}\n"
+                      f"Mã hóa: {info.get('codec', 'Unknown')}\n"
+                      f"Tần số: {info.get('sample_rate', 0)} Hz\n"
+                      f"Kênh: {info.get('channels', 0)}\n"
+                      f"Kích thước: {FileUtils.format_file_size(info.get('size', 0))}")
+                QMessageBox.information(self, "Thông tin file âm thanh", msg)
+                break
     
     def set_audio_files(self, file_paths: list):
         """Đặt danh sách tệp âm thanh"""
         self.audio_list.clear()
         self.audio_files = []
+        self.audio_file_paths = []
         
         for file_path in file_paths:
-            self.add_audio_file(file_path)
+            if self.add_audio_file(file_path):
+                self.audio_file_paths.append(file_path)
         
         self.update_info_label()
     
-    def add_audio_file(self, file_path: str):
-        """Thêm một tệp âm thanh vào danh sách"""
+    def add_audio_file(self, file_path: str) -> bool:
+        """Thêm một tệp âm thanh vào danh sách, trả về True nếu thành công"""
+        # Kiểm tra file tồn tại
+        if not Path(file_path).exists():
+            return False
+        
         # Xác thực tệp
         is_valid, error_msg = self.audio_loader.validate_audio_file(file_path)
         
         if not is_valid:
             QMessageBox.warning(self, "Tệp Âm Thanh Không Hợp Lệ", error_msg)
-            return
+            return False
         
         # Lấy thông tin tệp
         try:
             info = self.audio_loader.get_audio_info(file_path)
+            
+            # Kiểm tra xem file đã tồn tại trong danh sách chưa
+            if file_path in self.audio_file_paths:
+                return False
             
             # Tạo mục danh sách
             item = QListWidgetItem()
@@ -288,8 +338,11 @@ class AudioPanel(QWidget):
                 'info': info
             })
             
+            return True
+            
         except Exception as e:
             QMessageBox.warning(self, "Lỗi", f"Không thể tải tệp âm thanh: {str(e)}")
+            return False
     
     def update_info_label(self):
         """Cập nhật nhãn thông tin với tổng quan"""
@@ -326,21 +379,11 @@ class AudioPanel(QWidget):
         )
     
     def get_audio_files(self) -> list:
-        """Lấy danh sách đường dẫn tệp âm thanh"""
-        return [item.data(Qt.UserRole) for i in range(self.audio_list.count()) 
-                for item in [self.audio_list.item(i)]]
-    
-    def get_audio_order(self) -> list:
-        """Lấy thứ tự hiện tại của tệp âm thanh"""
-        order = []
+        """Lấy danh sách đường dẫn tệp âm thanh theo thứ tự hiện tại"""
+        # Luôn lấy theo thứ tự hiện tại từ UI
+        file_paths = []
         for i in range(self.audio_list.count()):
             item = self.audio_list.item(i)
             file_path = item.data(Qt.UserRole)
-            
-            # Tìm chỉ mục trong danh sách gốc
-            for idx, audio_file in enumerate(self.audio_files):
-                if audio_file['path'] == file_path:
-                    order.append(idx)
-                    break
-        
-        return order
+            file_paths.append(file_path)
+        return file_paths

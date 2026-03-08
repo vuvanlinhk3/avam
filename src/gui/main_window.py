@@ -830,7 +830,8 @@ class MainWindow(QMainWindow):
         </div>
         """
         QMessageBox.about(self, "About AVAM", about_text)
-    
+    # Trong method start_merge của MainWindow, thêm phần kiểm tra và tạo thư mục output:
+
     @Slot()
     def start_merge(self):
         """Start merge process với cấu hình hiện tại từ ConfigPanel"""
@@ -849,15 +850,48 @@ class MainWindow(QMainWindow):
             )
             return
 
-        # QUAN TRỌNG: Áp dụng cấu hình từ ConfigPanel trước khi merge
-        # Nếu có cấu hình hiện tại từ nút "Áp Dụng", sử dụng nó
-        if hasattr(self, 'current_merge_config') and self.current_merge_config:
-            self.apply_current_config_to_project()
+        # Lấy cấu hình hiện tại từ ConfigPanel
+        current_config = self.config_panel.get_config()
+        project = self.project_manager.current_project
+
+        # Lấy audio files theo thứ tự hiện tại từ UI
+        audio_files = self.audio_panel.get_audio_files()
+        
+        # Kiểm tra tất cả audio files có tồn tại không
+        missing_files = [f for f in audio_files if not Path(f).exists()]
+        if missing_files:
+            QMessageBox.critical(
+                self,
+                "Missing Audio Files",
+                f"Các file âm thanh sau không tồn tại:\n" + "\n".join(missing_files)
+            )
+            return
+
+        # Cập nhật project với audio files từ UI
+        project.audio_config.audio_files = audio_files
+
+        # Cập nhật audio config từ panel
+        project.audio_config.fade_in_duration = current_config.get('fade_in_duration', 0.0)
+        project.audio_config.fade_out_duration = current_config.get('fade_out_duration', 0.0)
+        project.audio_config.normalize_volume = current_config.get('normalize_audio', True)
+        project.audio_config.volume = current_config.get('audio_volume', 1.0)
+        project.audio_config.shuffle_audio = current_config.get('shuffle_audio', False)
+
+        # Cập nhật video config từ panel
+        project.video_config.mute_all_video_audio = current_config.get('mute_video_audio', False)
+        project.video_config.global_video_volume = current_config.get('video_volume', 1.0)
+
+        # Cập nhật output config
+        self.apply_config_to_project(current_config)
+        
+        # Đảm bảo thư mục output tồn tại
+        output_dir = Path(project.output_config.output_path).parent
+        output_dir.mkdir(parents=True, exist_ok=True)
 
         # Disable UI
         self.set_ui_enabled(False)
 
-        # 🔥 TẠO WORKER MỚI
+        # TẠO WORKER MỚI
         self.merge_worker = MergeWorker(
             self.project_manager,
             self.merge_pipeline
@@ -865,21 +899,19 @@ class MainWindow(QMainWindow):
 
         self.merge_worker.progress.connect(self.on_merge_progress)
         self.merge_worker.log_message.connect(self.on_merge_log)
-
-        # 🔥 QUAN TRỌNG: cleanup khi xong
         self.merge_worker.finished.connect(self.on_merge_finished)
         self.merge_worker.finished.connect(self.merge_worker.deleteLater)
 
         self.merge_worker.start()
         self.status_bar.show_message("Merging...")
 
-    def apply_current_config_to_project(self):
-        """Áp dụng cấu hình hiện tại từ ConfigPanel vào project"""
-        if not self.current_merge_config or not self.project_manager.current_project:
+    def apply_config_to_project(self, config: dict):
+        """Áp dụng cấu hình từ ConfigPanel vào project"""
+        if not config or not self.project_manager.current_project:
             return
         
-        # Tạo một bản sao của cấu hình hiện tại
-        config = self.current_merge_config.copy()
+        # Tạo bản sao của cấu hình hiện tại
+        config = config.copy()
         
         # Thêm các trường cần thiết nếu thiếu
         if 'output_path' not in config:

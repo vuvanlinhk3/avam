@@ -3,15 +3,17 @@ Main pipeline for merging audio and video
 """
 import os
 import tempfile
+import json
+import random
 from typing import List, Dict, Any, Optional, Callable
 from pathlib import Path
+from datetime import datetime
 from ..ffmpeg.ffmpeg_manager import FFmpegManager
 from ..ffmpeg.gpu_encoder import GPUEncoder
 from ..ffmpeg.encoder_profiles import EncoderProfiles
 from ..audio.audio_processor import AudioProcessor
 from ..video.video_builder import VideoBuilder
 from ..video.video_loader import VideoLoader
-from ..video.video_loop_strategy import VideoLoopStrategy
 from ...models.project_config import ProjectConfig, OutputQuality
 import logging
 
@@ -26,6 +28,7 @@ class MergePipeline:
     2. Build video timeline
     3. Merge audio and video
     4. Apply encoding settings
+    5. Save merge info
     """
     
     def __init__(self, ffmpeg_manager: FFmpegManager):
@@ -65,6 +68,132 @@ class MergePipeline:
         self.temp_files.append(temp_file)
         return temp_file
     
+    def _save_merge_info(self, project_config: ProjectConfig, output_path: str):
+        """
+        Lưu thông tin merge vào file txt
+        
+        Args:
+            project_config: Project configuration
+            output_path: Path to output video
+        """
+        try:
+            info = project_config.generate_merge_info()
+            info['output_file'] = output_path
+            
+            # Lấy thông tin file output
+            if os.path.exists(output_path):
+                file_size = os.path.getsize(output_path)
+                info['output_size'] = file_size
+                info['output_size_formatted'] = self._format_size(file_size)
+            
+            # Tạo tên file info
+            output_dir = Path(output_path).parent
+            output_name = Path(output_path).stem
+            info_file = output_dir / f"{output_name}_info.txt"
+            
+            # Ghi file info
+            with open(info_file, 'w', encoding='utf-8') as f:
+                f.write("="*60 + "\n")
+                f.write(f"AVAM - Auto Video Audio Merger\n")
+                f.write(f"Thông tin xuất video\n")
+                f.write("="*60 + "\n\n")
+                
+                f.write(f"Ngày xuất: {info['timestamp']}\n")
+                f.write(f"Tên project: {info['project_name']}\n")
+                f.write(f"File đầu ra: {info['output_file']}\n")
+                f.write(f"Kích thước: {info.get('output_size_formatted', 'N/A')}\n\n")
+                
+                f.write("-"*40 + "\n")
+                f.write("CẤU HÌNH GHÉP:\n")
+                f.write("-"*40 + "\n")
+                f.write(f"• Tắt âm thanh video: {'Có' if info['settings']['mute_video_audio'] else 'Không'}\n")
+                if not info['settings']['mute_video_audio']:
+                    f.write(f"• Âm lượng video: {info['settings']['video_volume']}x\n")
+                f.write(f"• Âm lượng audio: {info['settings']['audio_volume']}x\n")
+                f.write(f"• Chuẩn hóa âm lượng: {'Có' if info['settings']['normalize_audio'] else 'Không'}\n")
+                f.write(f"• Fade in: {info['settings']['fade_in']}s\n")
+                f.write(f"• Fade out: {info['settings']['fade_out']}s\n")
+                f.write(f"• Xáo trộn audio: {'Có' if info['settings']['shuffle_audio'] else 'Không'}\n")
+                f.write(f"• Độ phân giải: {info['settings']['resolution']}\n")
+                f.write(f"• FPS: {info['settings']['fps']}\n")
+                f.write(f"• Chất lượng: {info['settings']['quality']}\n\n")
+                
+                f.write("-"*40 + "\n")
+                f.write("FILE ÂM THANH (THEO THỨ TỰ GHÉP):\n")
+                f.write("-"*40 + "\n")
+                
+                # Xác định danh sách audio files để hiển thị
+                if info.get('shuffle_info') and info['shuffle_info'].get('shuffled_order'):
+                    # Nếu có xáo trộn, hiển thị theo thứ tự đã xáo trộn
+                    audio_files = info['shuffle_info']['shuffled_order']
+                    f.write(f"(Đã xáo trộn {len(audio_files)} file)\n\n")
+                else:
+                    # Không xáo trộn, hiển thị theo thứ tự gốc
+                    audio_files = info['audio_files']
+                    f.write(f"({len(audio_files)} file)\n\n")
+                
+                # Hiển thị danh sách file
+                for i, file_path in enumerate(audio_files, 1):
+                    file_name = Path(file_path).name
+                    # Thử lấy thời lượng file nếu có thể
+                    try:
+                        file_info = self.ffmpeg.get_media_info(file_path)
+                        duration = file_info.get('duration', 0)
+                        duration_str = f" ({duration:.1f}s)" if duration > 0 else ""
+                    except:
+                        duration_str = ""
+                    f.write(f"{i:2d}. {file_name}{duration_str}\n")
+                
+                # Hiển thị thông tin xáo trộn chi tiết nếu có
+                if info.get('shuffle_info'):
+                    f.write("\n" + "-"*40 + "\n")
+                    f.write("THÔNG TIN XÁO TRỘN CHI TIẾT:\n")
+                    f.write("-"*40 + "\n")
+                    
+                    if info['shuffle_info'].get('original_order'):
+                        f.write("\nThứ tự gốc:\n")
+                        for i, file_path in enumerate(info['shuffle_info']['original_order'], 1):
+                            file_name = Path(file_path).name
+                            f.write(f"   {i:2d}. {file_name}\n")
+                    
+                    f.write(f"\nĐã xáo trộn {len(info['shuffle_info'].get('original_order', []))} file\n")
+                
+                f.write("\n" + "-"*40 + "\n")
+                f.write("FILE VIDEO (THEO THỨ TỰ):\n")
+                f.write("-"*40 + "\n")
+                for i, file_path in enumerate(info['video_segments'], 1):
+                    file_name = Path(file_path).name
+                    # Thử lấy thời lượng file nếu có thể
+                    try:
+                        file_info = self.ffmpeg.get_media_info(file_path)
+                        duration = file_info.get('duration', 0)
+                        resolution = f"{file_info.get('width', 0)}x{file_info.get('height', 0)}"
+                        details = f" [{resolution}, {duration:.1f}s]" if duration > 0 else ""
+                    except:
+                        details = ""
+                    f.write(f"{i:2d}. {file_name}{details}\n")
+                
+                f.write("\n" + "="*60 + "\n")
+                f.write("="*60 + "\n")
+            
+            logger.info(f"Saved merge info to: {info_file}")
+            
+        except Exception as e:
+            logger.error(f"Failed to save merge info: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+    
+    def _format_size(self, size_bytes: int) -> str:
+        """Format file size"""
+        if size_bytes < 1024:
+            return f"{size_bytes} B"
+        elif size_bytes < 1024**2:
+            return f"{size_bytes/1024:.1f} KB"
+        elif size_bytes < 1024**3:
+            return f"{size_bytes/1024**2:.1f} MB"
+        else:
+            return f"{size_bytes/1024**3:.1f} GB"
+    
     def merge_project(self, project_config: ProjectConfig,
                      progress_callback: Optional[Callable[[float, str], None]] = None) -> str:
         """
@@ -81,6 +210,10 @@ class MergePipeline:
             # Update progress
             if progress_callback:
                 progress_callback(0, "Starting merge process...")
+            
+            # Áp dụng xáo trộn nếu có
+            if project_config.audio_config.shuffle_audio and len(project_config.audio_config.audio_files) >= 3:
+                self._apply_shuffle(project_config)
             
             # STEP 1: Process audio
             if progress_callback:
@@ -105,9 +238,15 @@ class MergePipeline:
                 progress_callback
             )
             
-            # STEP 4: Clean up
+            # STEP 4: Save merge info
             if progress_callback:
-                progress_callback(90, "Cleaning up temporary files...")
+                progress_callback(95, "Saving merge information...")
+            
+            self._save_merge_info(project_config, output_video)
+            
+            # STEP 5: Clean up
+            if progress_callback:
+                progress_callback(98, "Cleaning up temporary files...")
             
             self.cleanup()
             
@@ -121,6 +260,32 @@ class MergePipeline:
             logger.error(f"Pipeline failed: {e}", exc_info=True)
             self.cleanup()
             raise
+    
+    def _apply_shuffle(self, project_config: ProjectConfig):
+        """
+        Áp dụng xáo trộn cho audio files
+        
+        Args:
+            project_config: Project configuration
+        """
+        audio_files = project_config.audio_config.audio_files.copy()
+        
+        # Lưu thứ tự gốc
+        project_config.audio_config.original_audio_order = audio_files.copy()
+        
+        # Xáo trộn
+        shuffled = audio_files.copy()
+        random.shuffle(shuffled)
+        
+        # Lưu thứ tự sau xáo trộn
+        project_config.audio_config.shuffled_order = shuffled.copy()
+        
+        # Cập nhật audio_files với thứ tự đã xáo trộn
+        project_config.audio_config.audio_files = shuffled
+        
+        logger.info(f"Applied shuffle to {len(audio_files)} audio files")
+        logger.info(f"Original order: {[Path(f).name for f in project_config.audio_config.original_audio_order]}")
+        logger.info(f"Shuffled order: {[Path(f).name for f in project_config.audio_config.shuffled_order]}")
     
     def _process_audio(self, project_config: ProjectConfig) -> str:
         """
@@ -142,8 +307,10 @@ class MergePipeline:
         # Create temporary merged audio file
         merged_audio_path = self._create_temp_file(suffix='.m4a')
         
-        # Merge audio files
+        # Merge audio files với volume từ config
         logger.info(f"Merging {len(audio_config.audio_files)} audio files")
+        logger.info(f"Audio volume: {audio_config.volume}x")
+        
         merged_audio_path = self.audio_processor.merge_audio_files(
             audio_files=[{'file_path': path} for path in audio_config.audio_files],
             output_path=merged_audio_path,
@@ -157,17 +324,13 @@ class MergePipeline:
         if not os.path.exists(merged_audio_path):
             raise RuntimeError(f"Merged audio file not created: {merged_audio_path}")
         
-        file_size = os.path.getsize(merged_audio_path)
-        if file_size < 1024:
-            logger.warning(f"Merged audio file is very small: {file_size} bytes")
-        
-        # Get audio duration for video loop calculation
+        # Get audio duration
         audio_info = self.ffmpeg.get_media_info(merged_audio_path)
         audio_duration = audio_info['duration']
         
-        # Store audio duration in config for later use
+        # Store audio duration in config
         project_config.audio_config.output_audio_path = merged_audio_path
-        logger.info(f"Audio processed: {merged_audio_path}, duration: {audio_duration:.2f}s, size: {file_size:,} bytes")
+        logger.info(f"Audio processed: {merged_audio_path}, duration: {audio_duration:.2f}s")
         
         return merged_audio_path
     
@@ -195,12 +358,21 @@ class MergePipeline:
         if errors:
             logger.warning(f"Video loading errors: {errors}")
         
-        # Create video segments
-        segments = self.video_builder.create_video_segments(
-            video_files=video_files,
-            positions=[seg.position.value for seg in project_config.video_config.video_segments],
-            loop_behaviors=[seg.loop_behavior.value for seg in project_config.video_config.video_segments]
-        )
+        # Tạo segments với thông tin mute và volume từ project config
+        segments = []
+        for i, video_info in enumerate(video_files):
+            # Tạo segment với thông tin từ config
+            segment = self.video_builder.create_video_segments(
+                video_files=[video_info],
+                positions=[project_config.video_config.video_segments[i].position.value],
+                loop_behaviors=[project_config.video_config.video_segments[i].loop_behavior.value]
+            )[0]
+            
+            # Thêm thông tin audio từ config
+            segment.mute_audio = project_config.video_config.mute_all_video_audio
+            segment.audio_volume = project_config.video_config.global_video_volume
+            
+            segments.append(segment)
         
         # Build video concat list
         video_concat_path = self._create_temp_file(suffix='_video_concat.txt')
@@ -215,9 +387,9 @@ class MergePipeline:
         return concat_file
     
     def _merge_audio_video(self, merged_audio_path: str, 
-                          video_concat_path: str,
-                          project_config: ProjectConfig,
-                          progress_callback: Optional[Callable[[float, str], None]] = None) -> str:
+                        video_concat_path: str,
+                        project_config: ProjectConfig,
+                        progress_callback: Optional[Callable[[float, str], None]] = None) -> str:
         """
         Merge audio and video streams
         
@@ -233,7 +405,6 @@ class MergePipeline:
         
         # Get output path
         if not output_config.output_path:
-            # Generate output path
             output_dir = Path.cwd() / 'output'
             output_dir.mkdir(exist_ok=True)
             output_path = output_dir / f"output_{os.getpid()}.mp4"
@@ -247,27 +418,28 @@ class MergePipeline:
         audio_info = self.ffmpeg.get_media_info(merged_audio_path)
         total_duration = audio_info['duration']
         
-        # 🆕 Tính toán filter_complex dựa trên cấu hình âm lượng và mute
-        any_video_audio = any(not seg.mute_audio for seg in project_config.video_config.video_segments)
-        video_audio_volume = project_config.video_config.audio_volume
-        audio_files_volume = project_config.audio_config.volume
+        # Xác định có âm thanh video không
+        any_video_audio = not project_config.video_config.mute_all_video_audio
+        video_audio_volume = project_config.video_config.global_video_volume
         
+        # Build filter complex: KHÔNG áp dụng volume lại cho audio files vì đã xử lý trong audio_processor
         if any_video_audio:
-            # Có âm thanh từ video
+            # Có âm thanh video: mix với audio files (đã xử lý volume trong audio_processor)
             filter_complex = (
-                f'[0:a:0]volume={video_audio_volume} [a0];'
-                f'[1:a:0]volume={audio_files_volume} [a1];'
-                f'[a0][a1]amix=inputs=2:duration=longest:weights=1 1 [a_mix];'
-                f'[a_mix]alimiter=limit=1:level=1 [aout]'
+                f'[0:a:0]volume={video_audio_volume}[a0]; '
+                f'[1:a:0]anull[a1]; '
+                f'[a0][a1]amix=inputs=2:duration=longest:weights=1 1,'
+                f'alimiter=limit=1:level=1[aout]'
             )
+            logger.info(f"Video audio volume: {video_audio_volume}x (applied to video audio)")
         else:
-            # Tất cả video đều mute, chỉ có audio files
-            filter_complex = (
-                f'[1:a:0]volume={audio_files_volume} [a1];'
-                f'[a1]alimiter=limit=1:level=1 [aout]'
-            )
+            # Không có âm thanh video: chỉ dùng audio files, không cần volume lại
+            filter_complex = '[1:a:0]alimiter=limit=1:level=1[aout]'
+            logger.info("No video audio, using only external audio files")
         
-        # Build FFmpeg command, truyền filter_complex
+        logger.info(f"Using filter_complex: {filter_complex}")
+        
+        # Build FFmpeg command
         if output_config.quality == OutputQuality.ULTRA_FAST:
             cmd = self._build_gpu_optimized_command(
                 merged_audio_path, 
@@ -286,7 +458,6 @@ class MergePipeline:
             )
         
         logger.info(f"Final FFmpeg command: {' '.join(cmd)}")
-        logger.info(f"Total audio duration: {total_duration:.2f}s")
         
         # Execute FFmpeg command with progress tracking
         def progress_wrapper(current_time):
@@ -298,7 +469,7 @@ class MergePipeline:
         return_code, stdout, stderr = self.ffmpeg.execute_with_progress(
             cmd, 
             progress_callback=progress_wrapper,
-            timeout=3600  # 1 hour timeout
+            timeout=3600
         )
         
         if return_code != 0:
@@ -321,19 +492,7 @@ class MergePipeline:
                              output_config,
                              filter_complex: str = None,
                              any_video_audio: bool = True) -> List[str]:
-        """
-        Build FFmpeg command for merging
-        
-        Args:
-            audio_path: Path to audio file
-            video_concat_path: Path to video concat list
-            output_config: Output configuration
-            filter_complex: Custom filter_complex string
-            any_video_audio: Whether any video segment has audio enabled
-            
-        Returns:
-            List of FFmpeg command arguments
-        """
+        """Build FFmpeg command for merging"""
         cmd = []
         
         # Add hardware acceleration for decoding
@@ -344,67 +503,29 @@ class MergePipeline:
         cmd.extend([
             '-f', 'concat',
             '-safe', '0',
-            '-threads', '4',  # Parallel processing
+            '-threads', '4',
             '-i', video_concat_path
         ])
         
         # Audio input
         cmd.extend(['-i', audio_path])
         
-        # Sử dụng filter_complex được truyền vào
+        # Add filter complex
         if filter_complex:
             cmd.extend(['-filter_complex', filter_complex])
+            cmd.extend(['-map', '0:v:0', '-map', '[aout]'])
         else:
-            # Fallback (giữ logic cũ nếu không có filter_complex)
-            cmd.extend([
-                '-filter_complex',
-                '[0:a:0][1:a:0]amix=inputs=2:duration=longest[aout]'
-            ])
+            cmd.extend(['-map', '0:v:0', '-map', '1:a?'])
         
-        # Map streams
-        cmd.extend(['-map', '0:v:0'])  # Luôn lấy video từ input đầu
-        
-        # Map audio dựa trên filter_complex
-        if filter_complex and 'aout' in filter_complex:
-            cmd.extend(['-map', '[aout]'])
-        else:
-            # Fallback: map tất cả audio streams
-            cmd.extend(['-map', '0:a?', '-map', '1:a?'])
-        
-        # Video encoding settings - OPTIMIZED FOR SPEED
+        # Video encoding
         if output_config.use_gpu and self.gpu_encoder.is_gpu_available():
             encoder = self.gpu_encoder.get_best_encoder('h264')
-            
-            if encoder and ('_nvenc' in encoder or '_qsv' in encoder or '_amf' in encoder):
-                quality_str = output_config.quality.value.lower()
-                
-                # SPECIAL OPTIMIZATION FOR NVIDIA GPU
-                if '_nvenc' in encoder and self.gpu_encoder.is_nvidia_gpu():
-                    # Ultra-fast NVENC settings
-                    cmd.extend([
-                        '-c:v', encoder,
-                        '-preset', 'p1',  # Fastest NVENC preset
-                        '-tune', 'll',    # Low latency for speed
-                        '-profile:v', 'main',
-                        '-rc', 'vbr',
-                        '-cq', '23',
-                        '-b:v', '0',
-                        '-maxrate', '10M',
-                        '-bufsize', '20M',
-                        '-g', '120',  # Short GOP for speed
-                        '-bf', '2',
-                        '-temporal-aq', '1',
-                        '-spatial-aq', '1'
-                    ])
-                    logger.info(f"Using NVIDIA NVENC with ultra-fast preset")
-                else:
-                    # Other GPU encoders
-                    encoder_params = self.gpu_encoder.get_encoder_params(encoder, quality_str)
-                    cmd.extend(encoder_params)
-                    logger.info(f"Using GPU encoder: {encoder} with quality: {quality_str}")
+            if encoder:
+                quality_str = output_config.quality.value
+                encoder_params = self.gpu_encoder.get_encoder_params(encoder, quality_str)
+                cmd.extend(encoder_params)
             else:
                 cmd.extend(self._get_software_encoder_params(output_config))
-                logger.warning("No hardware encoder available, using software")
         else:
             cmd.extend(self._get_software_encoder_params(output_config))
         
@@ -415,14 +536,11 @@ class MergePipeline:
         
         # Output settings
         cmd.extend([
-            '-movflags', '+faststart',  # For web playback
-            '-y'  # Overwrite output file
+            '-movflags', '+faststart',
+            '-y',
+            output_config.output_path
         ])
         
-        # Output file
-        cmd.append(output_config.output_path)
-        
-        logger.debug(f"Built FFmpeg command: {' '.join(cmd)}")
         return cmd
     
     def _build_gpu_optimized_command(self, audio_path: str,
@@ -430,49 +548,29 @@ class MergePipeline:
                                      output_config,
                                      filter_complex: str = None,
                                      any_video_audio: bool = True) -> List[str]:
-        """
-        Build GPU optimized command for ultra-fast encoding
-        
-        Args:
-            audio_path: Path to audio file
-            video_concat_path: Path to video concat list
-            output_config: Output configuration
-            filter_complex: Custom filter_complex string
-            any_video_audio: Whether any video segment has audio enabled
-            
-        Returns:
-            List of FFmpeg command arguments
-        """
+        """Build GPU optimized command for ultra-fast encoding"""
         cmd = [
-            '-hwaccel', 'cuda',              # Hardware acceleration cho decoding
-            '-hwaccel_output_format', 'cuda', # Output format cho GPU
+            '-hwaccel', 'cuda',
+            '-hwaccel_output_format', 'cuda',
             '-f', 'concat',
             '-safe', '0',
             '-i', video_concat_path,
             '-i', audio_path,
         ]
         
-        # Sử dụng filter_complex được truyền vào
         if filter_complex:
             cmd.extend(['-filter_complex', filter_complex])
+            cmd.extend(['-map', '0:v:0', '-map', '[aout]'])
         else:
-            # Fallback
-            cmd.extend(['-filter_complex', '[0:a:0][1:a:0]amix=inputs=2:duration=longest[aout]'])
-        
-        # Map streams
-        cmd.extend(['-map', '0:v:0'])
-        if filter_complex and 'aout' in filter_complex:
-            cmd.extend(['-map', '[aout]'])
-        else:
-            cmd.extend(['-map', '1:a?'])
+            cmd.extend(['-map', '0:v:0', '-map', '1:a?'])
         
         # Video encoding settings (NVENC)
         cmd.extend([
             '-c:v', 'h264_nvenc',
-            '-preset', 'p1',                # Fastest preset
-            '-tune', 'll',                  # Low latency
-            '-rc', 'cbr',                    # Constant bitrate
-            '-b:v', '8M',                    # 8 Mbps
+            '-preset', 'p1',
+            '-tune', 'll',
+            '-rc', 'cbr',
+            '-b:v', '8M',
         ])
         
         # Audio encoding
@@ -491,61 +589,15 @@ class MergePipeline:
         return cmd
     
     def _get_software_encoder_params(self, output_config) -> List[str]:
-        """
-        Get software encoder parameters - OPTIMIZED FOR SPEED
-        
-        Args:
-            output_config: Output configuration
-            
-        Returns:
-            List of encoder parameters
-        """
+        """Get software encoder parameters"""
         quality_profile = EncoderProfiles.get_profile(output_config.quality, use_gpu=False)
         
-        # Use fastest settings for software encoding
         return [
             '-c:v', 'libx264',
-            '-preset', 'ultrafast',  # Fastest software preset
+            '-preset', 'ultrafast',
             '-crf', '23',
             '-profile:v', 'main',
-            '-tune', 'fastdecode',   # Optimize for fast decoding
+            '-tune', 'fastdecode',
             '-pix_fmt', 'yuv420p',
-            '-threads', '0'  # Use all available CPU threads
+            '-threads', '0'
         ]
-    
-    def estimate_processing_time(self, project_config: ProjectConfig) -> float:
-        """
-        Estimate processing time in minutes
-        
-        Args:
-            project_config: Project configuration
-            
-        Returns:
-            Estimated time in minutes
-        """
-        # Simple estimation based on audio duration and quality
-        audio_duration = 0
-        for path in project_config.audio_config.audio_files:
-            try:
-                info = self.ffmpeg.get_media_info(path)
-                audio_duration += info['duration']
-            except:
-                pass
-        
-        # Quality factor
-        quality_factor = {
-            OutputQuality.ULTRA_FAST: 0.2,
-            OutputQuality.MEDIUM: 1.0,
-            OutputQuality.HIGH: 1.5,
-            OutputQuality.VERY_HIGH: 2.0,
-            OutputQuality.ULTRA_HIGH: 3.0
-        }.get(project_config.output_config.quality, 1.5)
-        
-        # GPU acceleration factor
-        gpu_factor = 0.3 if project_config.output_config.use_gpu else 1.0
-        
-        # Estimated minutes
-        estimated_minutes = (audio_duration / 3600) * 60 * quality_factor * gpu_factor
-        
-        # Minimum 0.5 minute, maximum 5 minutes for estimation
-        return max(0.5, min(5.0, estimated_minutes))

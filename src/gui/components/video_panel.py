@@ -45,7 +45,7 @@ class VideoPanel(QWidget):
         title_font.setBold(True)
         title_label.setFont(title_font)
         title_label.setAlignment(Qt.AlignCenter)
-        title_label.setStyleSheet("color: #2c3e50;")  # Xanh đậm-xám
+        title_label.setStyleSheet("color: #2c3e50;")
         
         # Vùng thả
         self.drop_area = QGroupBox("Kéo & Thả Tệp Video Vào Đây")
@@ -54,7 +54,7 @@ class VideoPanel(QWidget):
         
         drop_label = QLabel("Thả tệp MP4, AVI, MKV, MOV vào đây\nhoặc nhấn 'Thêm Tệp'")
         drop_label.setAlignment(Qt.AlignCenter)
-        drop_label.setStyleSheet("color: #5d6d7e; font-style: italic;")  # Xám trung bình
+        drop_label.setStyleSheet("color: #5d6d7e; font-style: italic;")
         
         # Nút thêm tệp
         add_files_btn = QPushButton("Thêm Tệp Video")
@@ -76,10 +76,10 @@ class VideoPanel(QWidget):
             "#", "Tệp", "Vị Trí", "Hành Vi Lặp", "Thời Lượng"
         ])
         
-        # Cấu hình bảng - Tăng chiều cao bảng
-        self.segments_table.setMinimumHeight(250)  # Tăng chiều cao tối thiểu
-        self.segments_table.setRowHeight(0, 40)  # Tăng chiều cao hàng
-        self.segments_table.verticalHeader().setDefaultSectionSize(40)  # Tăng chiều cao mặc định cho hàng
+        # Cấu hình bảng
+        self.segments_table.setMinimumHeight(300)
+        self.segments_table.setRowHeight(0, 40)
+        self.segments_table.verticalHeader().setDefaultSectionSize(40)
         
         self.segments_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.segments_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
@@ -115,28 +115,10 @@ class VideoPanel(QWidget):
         button_layout.addWidget(remove_btn)
         button_layout.addWidget(clear_btn)
         
-        # Thông tin chiến lược
-        strategy_group = QGroupBox("Chiến Lược Lặp")
-        strategy_layout = QVBoxLayout(strategy_group)
-        strategy_layout.setContentsMargins(10, 15, 10, 10)
-        
-        self.strategy_label = QLabel("Thêm tệp video để xem chiến lược lặp")
-        self.strategy_label.setWordWrap(True)
-        self.strategy_label.setStyleSheet("""
-            color: #2c3e50; 
-            font-size: 12px; 
-            padding: 8px;
-            background-color: #f8f9fa;
-            border-radius: 4px;
-            border: 1px solid #ecf0f1;
-        """)
-        
-        strategy_layout.addWidget(self.strategy_label)
-        
         # Nhãn thông tin
         self.info_label = QLabel("Chưa có tệp video nào được thêm")
         self.info_label.setAlignment(Qt.AlignCenter)
-        self.info_label.setStyleSheet("color: #5d6d7e; font-size: 12px;")  # Xám trung bình
+        self.info_label.setStyleSheet("color: #5d6d7e; font-size: 12px;")
         
         # Thêm widget vào layout
         segments_layout.addWidget(self.segments_table)
@@ -145,10 +127,9 @@ class VideoPanel(QWidget):
         layout.addWidget(title_label)
         layout.addWidget(self.drop_area)
         layout.addWidget(segments_group)
-        layout.addWidget(strategy_group)
         layout.addWidget(self.info_label)
         
-        # Đặt style cho theme sáng
+        # Đặt style
         self.setStyleSheet("""
             QWidget {
                 background-color: #ffffff;
@@ -197,10 +178,6 @@ class VideoPanel(QWidget):
                 border: 1px solid #d5dbdb;
                 color: #2c3e50;
                 font-weight: bold;
-                font-family: 'Segoe UI', 'Arial';
-            }
-            QHeaderView::section:hover {
-                background-color: #d5dbdb;
             }
             QPushButton {
                 background-color: #3498db;
@@ -209,18 +186,9 @@ class VideoPanel(QWidget):
                 border-radius: 4px;
                 padding: 10px 20px;
                 font-weight: bold;
-                font-family: 'Segoe UI', 'Arial';
             }
             QPushButton:hover {
                 background-color: #2980b9;
-            }
-            QPushButton:pressed {
-                background-color: #1c5a7d;
-                padding: 11px 19px 9px 21px;
-            }
-            QPushButton:disabled {
-                background-color: #bdc3c7;
-                color: #7f8c8d;
             }
             QComboBox {
                 border: 1px solid #bdc3c7;
@@ -228,7 +196,6 @@ class VideoPanel(QWidget):
                 padding: 8px;
                 background-color: #ffffff;
                 color: #2c3e50;
-                font-family: 'Segoe UI', 'Arial';
                 min-height: 20px;
             }
             QComboBox:hover {
@@ -237,23 +204,6 @@ class VideoPanel(QWidget):
             QComboBox:focus {
                 border: 2px solid #3498db;
                 padding: 7px;
-            }
-            QComboBox::drop-down {
-                border: none;
-            }
-            QComboBox::down-arrow {
-                image: none;
-                border-left: 5px solid transparent;
-                border-right: 5px solid transparent;
-                border-top: 6px solid #2c3e50;
-                margin-right: 10px;
-            }
-            QComboBox QAbstractItemView {
-                border: 1px solid #bdc3c7;
-                background-color: white;
-                selection-background-color: #3498db;
-                selection-color: white;
-                font-family: 'Segoe UI', 'Arial';
             }
         """)
         
@@ -271,6 +221,7 @@ class VideoPanel(QWidget):
         """)
         self.drop_area.setObjectName("drop_area")
     
+    # Các phương thức khác giữ nguyên nhưng xóa update_strategy_info và không gọi nó
     def dragEnterEvent(self, event: QDragEnterEvent):
         """Xử lý sự kiện kéo vào"""
         if event.mimeData().hasUrls():
@@ -314,7 +265,6 @@ class VideoPanel(QWidget):
         if current_row <= 0:
             return
         
-        # Hoán đổi hàng
         self.swap_rows(current_row, current_row - 1)
         self.segments_table.setCurrentCell(current_row - 1, 0)
         self.update_segment_orders()
@@ -326,7 +276,6 @@ class VideoPanel(QWidget):
         if current_row < 0 or current_row >= self.segments_table.rowCount() - 1:
             return
         
-        # Hoán đổi hàng
         self.swap_rows(current_row, current_row + 1)
         self.segments_table.setCurrentCell(current_row + 1, 0)
         self.update_segment_orders()
@@ -346,7 +295,6 @@ class VideoPanel(QWidget):
         
         self.update_segment_orders()
         self.update_info_label()
-        self.update_strategy_info()
     
     @Slot()
     def clear_all_segments(self):
@@ -366,7 +314,6 @@ class VideoPanel(QWidget):
             self.segments_table.setRowCount(0)
             self.video_segments = []
             self.update_info_label()
-            self.update_strategy_info()
     
     @Slot(int, int)
     def on_cell_changed(self, row: int, column: int):
@@ -375,14 +322,11 @@ class VideoPanel(QWidget):
             segment_data = self.get_segment_data(row)
             if segment_data:
                 self.segment_changed.emit(segment_data)
-                self.update_strategy_info()
     
     def swap_rows(self, row1: int, row2: int):
         """Hoán đổi hai hàng trong bảng"""
-        # Tắt tín hiệu để tránh cập nhật nhiều lần
         self.segments_table.blockSignals(True)
         
-        # Hoán đổi tất cả ô
         for col in range(self.segments_table.columnCount()):
             item1 = self.segments_table.takeItem(row1, col)
             item2 = self.segments_table.takeItem(row2, col)
@@ -390,7 +334,6 @@ class VideoPanel(QWidget):
             self.segments_table.setItem(row2, col, item1)
             self.segments_table.setItem(row1, col, item2)
             
-            # Cập nhật số thứ tự
             if col == 0:
                 if item2:
                     item2.setText(str(row1 + 1))
@@ -409,8 +352,6 @@ class VideoPanel(QWidget):
                 order_item.setText(str(row + 1))
         
         self.segments_table.blockSignals(False)
-        
-        # Phát tín hiệu sắp xếp lại
         order = list(range(self.segments_table.rowCount()))
         self.segments_reordered.emit(order)
     
@@ -423,13 +364,11 @@ class VideoPanel(QWidget):
             self.add_video_segment(segment_data)
         
         self.update_info_label()
-        self.update_strategy_info()
     
     def add_video_segment(self, segment_data: dict):
         """Thêm phân đoạn video vào bảng"""
         file_path = segment_data.get('file_path')
         
-        # Xác thực tệp
         is_valid, error_msg = self.video_loader.validate_video_file(file_path)
         
         if not is_valid:
@@ -437,19 +376,15 @@ class VideoPanel(QWidget):
             return
         
         try:
-            # Lấy thông tin video
             info = self.video_loader.get_video_info(file_path)
             
-            # Thêm hàng
             row = self.segments_table.rowCount()
             self.segments_table.insertRow(row)
             
-            # Số thứ tự
             order_item = QTableWidgetItem(str(row + 1))
             order_item.setTextAlignment(Qt.AlignCenter)
             self.segments_table.setItem(row, 0, order_item)
             
-            # Tên tệp
             file_item = QTableWidgetItem(Path(file_path).name)
             file_item.setData(Qt.UserRole, file_path)
             file_item.setToolTip(f"Đường dẫn: {file_path}\n"
@@ -457,7 +392,6 @@ class VideoPanel(QWidget):
                                f"Thời lượng: {info['duration']:.2f}s")
             self.segments_table.setItem(row, 1, file_item)
             
-            # Combobox vị trí
             position_combo = QComboBox()
             position_combo.addItems(["Start", "Middle", "End"])
             
@@ -474,7 +408,6 @@ class VideoPanel(QWidget):
             )
             self.segments_table.setCellWidget(row, 2, position_combo)
             
-            # Combobox hành vi lặp
             loop_combo = QComboBox()
             loop_combo.addItems(["Auto", "Loop", "No Loop"])
             
@@ -491,12 +424,10 @@ class VideoPanel(QWidget):
             )
             self.segments_table.setCellWidget(row, 3, loop_combo)
             
-            # Thời lượng
             duration_item = QTableWidgetItem(f"{info['duration']:.2f}s")
             duration_item.setTextAlignment(Qt.AlignCenter)
             self.segments_table.setItem(row, 4, duration_item)
             
-            # Lưu dữ liệu phân đoạn
             self.video_segments.append({
                 'file_path': file_path,
                 'info': info,
@@ -514,7 +445,6 @@ class VideoPanel(QWidget):
         if segment_data:
             segment_data['position'] = position
             self.segment_changed.emit(segment_data)
-            self.update_strategy_info()
     
     def on_loop_changed(self, row: int, loop_behavior: str):
         """Xử lý thay đổi hành vi lặp"""
@@ -522,7 +452,6 @@ class VideoPanel(QWidget):
         if segment_data:
             segment_data['loop_behavior'] = loop_behavior
             self.segment_changed.emit(segment_data)
-            self.update_strategy_info()
     
     def get_segment_data(self, row: int) -> dict:
         """Lấy dữ liệu phân đoạn cho hàng"""
@@ -540,8 +469,8 @@ class VideoPanel(QWidget):
         
         return {
             'file_path': file_path,
-            'position': position_combo.currentText().lower(),
-            'loop_behavior': loop_combo.currentText().lower().replace(' ', '_'),
+            'position': position_combo.currentText().lower() if position_combo else 'middle',
+            'loop_behavior': loop_combo.currentText().lower().replace(' ', '_') if loop_combo else 'auto',
             'order': row
         }
     
@@ -553,13 +482,10 @@ class VideoPanel(QWidget):
             self.info_label.setText("Chưa có tệp video nào được thêm")
             return
         
-        # Tính tổng thời lượng
         total_duration = 0.0
-        
         for segment in self.video_segments:
             total_duration += segment['info']['duration']
         
-        # Định dạng thời lượng
         if total_duration < 60:
             duration_str = f"{total_duration:.1f} giây"
         elif total_duration < 3600:
@@ -576,59 +502,11 @@ class VideoPanel(QWidget):
             f"{count} phân đoạn video | Tổng thời lượng: {duration_str}"
         )
     
-    def update_strategy_info(self):
-        """Cập nhật thông tin chiến lược lặp"""
-        count = self.segments_table.rowCount()
-        
-        if count == 0:
-            self.strategy_label.setText("Thêm tệp video để xem chiến lược lặp")
-            return
-        
-        # Tạo mô tả chiến lược dựa trên số lượng video
-        if count == 1:
-            strategy = (
-                "Chiến Lược Một Video:\n"
-                "• Video sẽ lặp để khớp thời lượng âm thanh\n"
-                "• Không cần cấu hình"
-            )
-        elif count == 2:
-            strategy = (
-                "Chiến Lược Hai Video:\n"
-                "• Video 1: Có thể là intro (không lặp) hoặc lặp\n"
-                "• Video 2: Sẽ lặp hoặc làm outro\n"
-                "• Ít nhất một video phải lặp"
-            )
-        else:
-            strategy = (
-                "Chiến Lược Nhiều Video:\n"
-                "• Video đầu: Có thể là intro (không lặp)\n"
-                "• Video giữa: Luôn lặp\n"
-                "• Video cuối: Có thể là outro (không lặp)\n"
-                "• Linh hoạt hoàn toàn cho 3+ video"
-            )
-        
-        # Thêm thông tin cụ thể của phân đoạn
-        segment_info = []
-        for row in range(count):
-            segment_data = self.get_segment_data(row)
-            if segment_data:
-                file_name = Path(segment_data['file_path']).name
-                position = segment_data['position'].title()
-                loop = segment_data['loop_behavior'].replace('_', ' ').title()
-                segment_info.append(f"{row + 1}. {file_name} - {position} ({loop})")
-        
-        if segment_info:
-            strategy += "\n\nCấu hình hiện tại:\n" + "\n".join(segment_info)
-        
-        self.strategy_label.setText(strategy)
-    
     def get_video_segments(self) -> list:
         """Lấy danh sách dữ liệu phân đoạn video"""
         segments = []
-        
         for row in range(self.segments_table.rowCount()):
             segment_data = self.get_segment_data(row)
             if segment_data:
                 segments.append(segment_data)
-        
         return segments

@@ -6,6 +6,7 @@ from typing import List, Optional, Dict, Any
 from enum import Enum
 import json
 import os
+from datetime import datetime
 
 class VideoPosition(Enum):
     """Position of video segment"""
@@ -35,7 +36,10 @@ class AudioConfig:
     fade_in_duration: float = 1.0  # seconds
     fade_out_duration: float = 1.0  # seconds
     output_audio_path: str = ""
-    volume: float = 4
+    volume: float = 1.0  # 🆕 Âm lượng tổng thể cho audio files
+    shuffle_audio: bool = False  # 🆕 Xáo trộn file âm thanh
+    original_audio_order: List[str] = field(default_factory=list)  # 🆕 Lưu thứ tự gốc
+    shuffled_order: List[str] = field(default_factory=list)  # 🆕 Lưu thứ tự sau xáo trộn
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -43,7 +47,11 @@ class AudioConfig:
             'normalize_volume': self.normalize_volume,
             'fade_in_duration': self.fade_in_duration,
             'fade_out_duration': self.fade_out_duration,
-            'output_audio_path': self.output_audio_path
+            'output_audio_path': self.output_audio_path,
+            'volume': self.volume,
+            'shuffle_audio': self.shuffle_audio,
+            'original_audio_order': self.original_audio_order,
+            'shuffled_order': self.shuffled_order
         }
     
     @classmethod
@@ -57,14 +65,17 @@ class VideoSegmentConfig:
     position: VideoPosition = VideoPosition.MIDDLE
     loop_behavior: LoopStrategy = LoopStrategy.AUTO
     order: int = 0
-    mute_audio: bool = False          # 🆕 Tắt âm thanh của video này
-    audio_volume: float = 1.0          # 🆕 Âm lượng nếu không tắt (0.0 - 2.0)
+    mute_audio: bool = False          # Tắt âm thanh của video này
+    audio_volume: float = 1.0          # Âm lượng nếu không tắt (0.0 - 2.0)
+    
     def to_dict(self) -> Dict[str, Any]:
         return {
             'file_path': self.file_path,
             'position': self.position.value,
             'loop_behavior': self.loop_behavior.value,
-            'order': self.order
+            'order': self.order,
+            'mute_audio': self.mute_audio,
+            'audio_volume': self.audio_volume
         }
     
     @classmethod
@@ -79,11 +90,15 @@ class VideoConfig:
     """Configuration for video processing"""
     video_segments: List[VideoSegmentConfig] = field(default_factory=list)
     output_video_path: str = ""
-    audio_volume: float = 1.0  # 🆕 Global volume cho video audio (nếu không mute)
+    mute_all_video_audio: bool = False  # 🆕 Tắt âm thanh tất cả video
+    global_video_volume: float = 1.0  # 🆕 Âm lượng tổng thể cho video (nếu không mute)
+    
     def to_dict(self) -> Dict[str, Any]:
         return {
             'video_segments': [seg.to_dict() for seg in self.video_segments],
-            'output_video_path': self.output_video_path
+            'output_video_path': self.output_video_path,
+            'mute_all_video_audio': self.mute_all_video_audio,
+            'global_video_volume': self.global_video_volume
         }
     
     @classmethod
@@ -93,7 +108,9 @@ class VideoConfig:
         ]
         return cls(
             video_segments=video_segments,
-            output_video_path=data['output_video_path']
+            output_video_path=data['output_video_path'],
+            mute_all_video_audio=data.get('mute_all_video_audio', False),
+            global_video_volume=data.get('global_video_volume', 1.0)
         )
 
 @dataclass
@@ -158,3 +175,42 @@ class ProjectConfig:
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         return cls.from_dict(data)
+    
+    def generate_merge_info(self) -> Dict[str, Any]:
+        """
+        Tạo thông tin về quá trình ghép để lưu vào file txt
+        """
+        info = {
+            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'project_name': self.name,
+            'audio_files': self.audio_config.audio_files.copy(),
+            'video_segments': [seg.file_path for seg in self.video_config.video_segments],
+            'settings': {
+                'mute_video_audio': self.video_config.mute_all_video_audio,
+                'video_volume': self.video_config.global_video_volume,
+                'audio_volume': self.audio_config.volume,
+                'normalize_audio': self.audio_config.normalize_volume,
+                'fade_in': self.audio_config.fade_in_duration,
+                'fade_out': self.audio_config.fade_out_duration,
+                'shuffle_audio': self.audio_config.shuffle_audio,
+                'resolution': self.output_config.resolution,
+                'fps': self.output_config.fps,
+                'quality': self.output_config.quality.value
+            },
+            'shuffle_info': None
+        }
+        
+        # Thêm thông tin xáo trộn nếu có
+        if self.audio_config.shuffle_audio and self.audio_config.original_audio_order:
+            info['shuffle_info'] = {
+                'original_order': self.audio_config.original_audio_order.copy(),
+                'shuffled_order': self.audio_config.shuffled_order.copy() if self.audio_config.shuffled_order else self.audio_config.audio_files.copy()
+            }
+        elif self.audio_config.shuffle_audio:
+            # Nếu shuffle_audio = True nhưng chưa có original_order, tạo mới
+            info['shuffle_info'] = {
+                'original_order': self.audio_config.audio_files.copy(),
+                'shuffled_order': self.audio_config.audio_files.copy()
+            }
+        
+        return info

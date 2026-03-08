@@ -9,14 +9,14 @@ import os
 
 def setup_logger(name: str = "AVAM", log_level: str = "INFO") -> logging.Logger:
     """
-    Setup logger with file and console handlers
+    Setup root logger with file and console handlers
     
     Args:
-        name: Logger name
+        name: Ignored (kept for compatibility)
         log_level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         
     Returns:
-        Configured logger instance
+        Root logger instance
     """
     # Create logs directory if it doesn't exist
     log_dir = Path("logs")
@@ -25,14 +25,6 @@ def setup_logger(name: str = "AVAM", log_level: str = "INFO") -> logging.Logger:
     # Generate log filename with timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = log_dir / f"avam_{timestamp}.log"
-    
-    # Create logger
-    logger = logging.getLogger(name)
-    logger.setLevel(getattr(logging, log_level.upper()))
-    
-    # Prevent duplicate handlers
-    if logger.handlers:
-        return logger
     
     # Create formatters
     file_formatter = logging.Formatter(
@@ -47,29 +39,38 @@ def setup_logger(name: str = "AVAM", log_level: str = "INFO") -> logging.Logger:
     file_handler = logging.FileHandler(log_file, encoding='utf-8')
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(file_formatter)
-    logger.addHandler(file_handler)
     
     # Console handler
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(getattr(logging, log_level.upper()))
     console_handler.setFormatter(console_formatter)
-    logger.addHandler(console_handler)
+    
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)
+    
+    # Remove existing handlers to avoid duplicates
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
+    
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
     
     # Log startup
-    logger.info(f"Logger initialized. Log file: {log_file}")
-    logger.info(f"Python version: {sys.version}")
-    logger.info(f"Current directory: {Path.cwd()}")
+    root_logger.info(f"Logger initialized. Log file: {log_file}")
+    root_logger.info(f"Python version: {sys.version}")
+    root_logger.info(f"Current directory: {Path.cwd()}")
     
-    return logger
+    return root_logger
 
 def get_logger(name: str = "AVAM") -> logging.Logger:
     """
-    Get logger instance
+    Get root logger instance
     
     Args:
-        name: Logger name
+        name: Ignored (kept for compatibility)
         
     Returns:
-        Logger instance
+        Root logger instance
     """
-    return logging.getLogger(name)
+    return logging.getLogger()
