@@ -51,8 +51,9 @@ def main():
         
         # Create application
         app = QApplication(sys.argv)
+        app.setStyle("windowsvista") 
         app.setApplicationName("AVAM")
-        app.setOrganizationName("Livaan - Mao")
+        app.setOrganizationName("Livaan")
         
         # Create and show loader window - SỬA: truyền config_manager thay vì config
         loader = LoaderWindow(config_manager)

@@ -3,6 +3,7 @@ Main window for AVAM application
 """
 import sys
 import os
+import json
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
@@ -35,12 +36,14 @@ class MergeWorker(QThread):
     log_message = Signal(str)
     
     def __init__(self, project_manager: ProjectManager, 
-                 pipeline: MergePipeline):
+                 pipeline: MergePipeline,
+                 create_info_file: bool = True):
         super().__init__()
         self.project_manager = project_manager
         self.pipeline = pipeline
+        self.create_info_file = create_info_file
         self.cancel_requested = False
-    
+        print(f"[DEBUG] MergeWorker nhận create_info_file = {self.create_info_file}")
     def run(self):
         """Run merge process"""
         try:
@@ -62,7 +65,8 @@ class MergeWorker(QThread):
             
             output_path = self.pipeline.merge_project(
                 project,
-                progress_callback=progress_callback
+                progress_callback=progress_callback,
+                create_info_file=self.create_info_file
             )
             
             if self.cancel_requested:
@@ -413,10 +417,6 @@ class MainWindow(QMainWindow):
                 height: 16px;
             }
             
-            QCheckBox::indicator:checked {
-                background-color: #3498db;
-                border: 1px solid #2980b9;
-            }
             
             QLabel {
                 color: #2c3e50;
@@ -798,10 +798,20 @@ class MainWindow(QMainWindow):
     
     def open_settings(self):
         """Open settings window"""
-        # SỬA: truyền config_manager thay vì config
-        settings_window = SettingsWindow(self.config_manager, self)
+        # Không truyền config_manager nữa, chỉ truyền parent
+        settings_window = SettingsWindow(self)
+        settings_window.settings_changed.connect(self.on_settings_changed)
         settings_window.exec_()
-    
+
+    def on_settings_changed(self, settings: dict):
+        """Handle settings changed"""
+        print(f"⚙️ Settings changed: {settings}")
+        # Cập nhật config_manager nếu cần
+        if hasattr(self, 'config_manager'):
+            for key, value in settings.items():
+                if hasattr(self.config_manager.config, key):
+                    setattr(self.config_manager.config, key, value)
+            self.config_manager.save_config()
     def generate_preview(self):
         """Generate preview video"""
         # TODO: Implement preview generation
@@ -818,20 +828,51 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Validation Failed", f"Project validation failed:\n{error_msg}")
     
     def show_about(self):
-        """Show about dialog"""
+        """Hiển thị hộp thoại thông tin về ứng dụng"""
         about_text = """
-        <div style='font-family: Arial, sans-serif;'>
-        <h2 style='color: #2c3e50; margin-bottom: 10px;'>AVAM - Auto Video Audio Merger</h2>
-        <p style='color: #2c3e50; font-size: 12px;'><strong>Version 1.0.1</strong></p>
-        <p style='color: #2c3e50;'>A tool for creating long videos by intelligently looping videos according to audio.</p>
-        <p style='color: #2c3e50;'>Optimized for GPU, no rendering, ultra-fast export.</p>
-        <hr style='border: none; border-top: 1px solid #e1e5eb; margin: 15px 0;'>
-        <p style='color: #7f8c8d; font-size: 10px;'>© 2025 Livaan - Mao</p>
+        <div style='font-family: Arial, sans-serif; text-align: center;'>
+            <h2 style='color: #3498db; margin-bottom: 5px;'>🎬 AVAM</h2>
+            <h3 style='color: #2c3e50; margin-top: 0;'>Auto Video Audio Merger</h3>
+            <p style='color: #34495e; font-size: 12px;'><strong>Phiên bản 2.0.0</strong></p>
+            
+            <div style='background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin: 15px 0;'>
+                <p style='color: #2c3e50; margin: 5px 0;'>✨ Công cụ ghép video tự động thông minh</p>
+                <p style='color: #2c3e50; margin: 5px 0;'>🎯 Tự động lặp video theo thời lượng âm thanh</p>
+                <p style='color: #2c3e50; margin: 5px 0;'>⚡ Tối ưu GPU, xuất file siêu tốc</p>
+                <p style='color: #2c3e50; margin: 5px 0;'>🎨 Hỗ trợ xáo trộn âm thanh ngẫu nhiên</p>
+                <p style='color: #2c3e50; margin: 5px 0;'>📝 Tự động tạo file log chi tiết</p>
+            </div>
+            
+            <hr style='border: none; border-top: 1px solid #e1e5eb; margin: 15px 0;'>
+            
+
+            <p style='color: #7f8c8d; font-size: 10px; margin-top: 15px;'>© 2025 Livaan - Mao. All rights reserved.</p>
         </div>
         """
-        QMessageBox.about(self, "About AVAM", about_text)
-    # Trong method start_merge của MainWindow, thêm phần kiểm tra và tạo thư mục output:
+        
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Giới thiệu về AVAM")
+        msg_box.setTextFormat(Qt.RichText)
+        msg_box.setText(about_text)
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        msg_box.button(QMessageBox.Ok).setText("Đã hiểu")
+        msg_box.exec_()
 
+    def load_settings(self):
+        settings_file = Path.cwd() / 'avam_settings.json'
+        print(f"[DEBUG] Đọc settings từ: {settings_file.absolute()}")
+        if settings_file.exists():
+            try:
+                with open(settings_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                print(f"[DEBUG] Nội dung settings: {data}")
+                return data
+            except Exception as e:
+                print(f"[DEBUG] Lỗi đọc settings: {e}")
+        else:
+            print("[DEBUG] File settings không tồn tại")
+        return {}
+    
     @Slot()
     def start_merge(self):
         """Start merge process với cấu hình hiện tại từ ConfigPanel"""
@@ -888,13 +929,26 @@ class MainWindow(QMainWindow):
         output_dir = Path(project.output_config.output_path).parent
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        # ===== ĐỌC CÀI ĐẶT =====
+        settings = self.load_settings()
+        create_info = settings.get('create_info_file', True)   # Mặc định True nếu không có
+        print(f"[DEBUG] create_info_file = {create_info} (kiểu: {type(create_info)})")
         # Disable UI
         self.set_ui_enabled(False)
 
-        # TẠO WORKER MỚI
+        # Tính ước tính
+        est_time, est_size = self.estimate_duration_and_size(
+            audio_files,
+            [seg.file_path for seg in project.video_config.video_segments],
+            current_config
+        )
+        self.control_panel.update_estimate(est_time, est_size)    
+
+        # TẠO WORKER MỚI - TRUYỀN create_info
         self.merge_worker = MergeWorker(
             self.project_manager,
-            self.merge_pipeline
+            self.merge_pipeline,
+            create_info_file=create_info   # <-- THÊM DÒNG NÀY
         )
 
         self.merge_worker.progress.connect(self.on_merge_progress)
@@ -1005,3 +1059,103 @@ class MainWindow(QMainWindow):
             event.accept()
         else:
             event.ignore()
+        
+    def estimate_duration_and_size(self, audio_files, video_files, config):
+        """
+        Tính thời gian xử lý và kích thước file đầu ra ước tính.
+
+        Args:
+            audio_files: Danh sách đường dẫn file âm thanh
+            video_files: Danh sách đường dẫn file video
+            config: Dict cấu hình từ ConfigPanel (chứa resolution, quality, use_gpu, ...)
+
+        Returns:
+            Tuple (thoi_gian_phut, kich_thuoc_gb)
+        """
+        # 1. Tính tổng thời lượng audio (quyết định độ dài video cuối)
+        total_duration = 0.0
+        for af in audio_files:
+            try:
+                info = self.ffmpeg_manager.get_media_info(af)
+                total_duration += info.get('duration', 0)
+            except Exception as e:
+                print(f"Không thể đọc duration audio {af}: {e}")
+
+        # Nếu không có audio (trường hợp đặc biệt), dùng tổng video
+        if total_duration == 0 and video_files:
+            for vf in video_files:
+                try:
+                    info = self.ffmpeg_manager.get_media_info(vf)
+                    total_duration += info.get('duration', 0)
+                except Exception as e:
+                    print(f"Không thể đọc duration video {vf}: {e}")
+
+        if total_duration <= 0:
+            return 0.0, 0.0
+
+        # 2. Xác định bitrate video dựa trên độ phân giải và chất lượng
+        resolution = config.get('resolution', '1920x1080')
+        try:
+            width, height = map(int, resolution.split('x'))
+        except:
+            width, height = 1920, 1080
+
+        quality = config.get('quality', 'high')
+        use_gpu = config.get('use_gpu', True)
+
+        # Tính số pixel mỗi frame
+        pixels_per_frame = width * height
+
+        # Bitrate cơ sở (bps) dựa trên độ phân giải (ước lượng 0.1 bit/pixel cho medium)
+        base_bitrate = pixels_per_frame * 0.1  # bit per pixel (ước lượng)
+
+        # Điều chỉnh theo chất lượng
+        quality_multipliers = {
+            'ultra_fast': 0.6,
+            'medium': 1.0,
+            'high': 1.5,
+            'very_high': 2.0,
+            'ultra_high': 2.5
+        }
+        mult = quality_multipliers.get(quality, 1.0)
+
+        video_bitrate_bps = base_bitrate * mult * 30  # nhân với FPS giả định 30
+        # Giới hạn trong khoảng hợp lý (500 Kbps - 50 Mbps)
+        video_bitrate_bps = max(500_000, min(50_000_000, video_bitrate_bps))
+
+        # Audio bitrate (kbps) dựa trên chất lượng
+        audio_bitrate_kbps_map = {
+            'ultra_fast': 128,
+            'medium': 192,
+            'high': 256,
+            'very_high': 320,
+            'ultra_high': 384
+        }
+        audio_bitrate_kbps = audio_bitrate_kbps_map.get(quality, 256)
+
+        # 3. Tính kích thước file (bytes)
+        total_bitrate_bps = video_bitrate_bps + (audio_bitrate_kbps * 1000)
+        estimated_size_bytes = total_bitrate_bps * total_duration / 8
+        estimated_size_gb = estimated_size_bytes / (1024**3)
+
+        # 4. Tính thời gian xử lý ước tính (phút)
+        # Tốc độ xử lý phụ thuộc vào GPU/CPU, độ phân giải, chất lượng
+        # Ước lượng: GPU xử lý nhanh gấp 3-5 lần CPU
+        if use_gpu:
+            # GPU: ước tính 2-4x realtime tuỳ độ phân giải
+            speed_factor = 0.3   # 0.3 = nhanh hơn 3 lần realtime
+        else:
+            # CPU: chậm hơn realtime, nhất là với ultra_high
+            cpu_slowdown = {
+                'ultra_fast': 1.0,
+                'medium': 1.5,
+                'high': 2.0,
+                'very_high': 2.5,
+                'ultra_high': 3.0
+            }
+            speed_factor = cpu_slowdown.get(quality, 1.5)
+
+        estimated_time_seconds = total_duration * speed_factor
+        estimated_time_minutes = estimated_time_seconds / 60
+
+        return estimated_time_minutes, estimated_size_gb

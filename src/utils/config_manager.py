@@ -9,7 +9,6 @@ from dataclasses import dataclass, field, asdict
 
 @dataclass
 class AppConfig:
-    """Application configuration"""
     # Window settings
     window_width: int = 1200
     window_height: int = 800
@@ -21,7 +20,9 @@ class AppConfig:
     
     # GPU settings
     use_gpu: bool = True
-    gpu_encoder: str = "nvenc"  # nvenc, qsv, amf
+    gpu_encoder: str = "nvenc"
+    gpu_device: int = 0
+    gpu_preset: str = "p4"
     
     # Output settings
     default_output_dir: str = "output"
@@ -33,20 +34,29 @@ class AppConfig:
     normalize_audio: bool = True
     fade_in_duration: float = 1.0
     fade_out_duration: float = 1.0
+    default_audio_volume: float = 1.0  # Mới
+    default_video_volume: float = 1.0  # Mới
     
     # Recent files
     recent_projects: list = field(default_factory=list)
     recent_audio_files: list = field(default_factory=list)
     recent_video_files: list = field(default_factory=list)
+    recent_files_limit: int = 20  # Mới
     
     # UI settings
-    theme: str = "default"  # default, dark, light
-    language: str = "vi"  # vi, en
+    theme: str = "light"
+    language: str = "vi"
+    show_tooltips: bool = True  # Mới
+    auto_save_project: bool = True  # Mới
     
     # Performance
     enable_preview: bool = True
-    preview_duration: int = 30  # seconds
+    preview_duration: int = 30
     max_threads: int = 4
+    log_level: str = "INFO"  # Mới
+    
+    # Updates
+    check_updates: bool = True  # Mới
     
     # Output panel configuration
     output_panel_config: Dict[str, Any] = field(default_factory=dict)

@@ -1,0 +1,15 @@
+{
+  "output_dir": "G:\\source_code_vd\\avam_v4\\output",
+  "auto_save": true,
+  "create_info_file": true,
+  "ffmpeg_path": "",
+  "ffprobe_path": "",
+  "max_threads": 4,
+  "use_gpu": true,
+  "gpu_encoder": "nvenc",
+  "gpu_device": 0,
+  "theme": "light",
+  "language": "vi",
+  "window_maximized": false,
+  "show_tooltips": true
+}

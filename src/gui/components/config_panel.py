@@ -58,32 +58,11 @@ class ConfigPanel(QWidget):
         video_group = QGroupBox("Cài Đặt Video")
         video_layout = QFormLayout(video_group)
         
-        # Xóa âm thanh video - Cải thiện style
+        # Xóa âm thanh video - KHÔNG style sheet (dùng mặc định Windows)
         self.mute_video_check = QCheckBox("Xóa âm thanh khỏi video")
         self.mute_video_check.setChecked(False)
         self.mute_video_check.toggled.connect(self.on_video_audio_toggled)
-        self.mute_video_check.setStyleSheet("""
-            QCheckBox {
-                spacing: 8px;
-                font-weight: bold;
-            }
-            QCheckBox::indicator {
-                width: 20px;
-                height: 20px;
-                border: 2px solid #3498db;
-                border-radius: 4px;
-                background-color: white;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #3498db;
-                image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0iI2ZmZmZmZiI+PHBhdGggZD0iTTEyLjcgNS4zTDcgMTAuN0wzLjMgN2wtMS40IDEuNEw3IDEzLjVsNy4xLTcuMS0xLjQtMS40eiIvPjwvc3ZnPg==);
-            }
-            QCheckBox::indicator:hover {
-                border: 2px solid #2980b9;
-                background-color: #ecf0f1;
-            }
-        """)
-        
+
         # Âm lượng video (chỉ enabled khi không mute)
         self.video_volume_spin = QDoubleSpinBox()
         self.video_volume_spin.setRange(0.0, 10.0)
@@ -188,32 +167,11 @@ class ConfigPanel(QWidget):
             }
         """)
         
-        audio_layout.addRow("Âm lượng:", self.audio_volume_spin)
+        audio_layout.addRow("Âm lượng:               ", self.audio_volume_spin)
         
-        # Chuẩn hóa âm lượng
+        # Chuẩn hóa âm lượng - KHÔNG style sheet
         self.normalize_check = QCheckBox("Chuẩn hóa âm lượng")
         self.normalize_check.setChecked(True)
-        self.normalize_check.setStyleSheet("""
-            QCheckBox {
-                spacing: 8px;
-                font-weight: bold;
-            }
-            QCheckBox::indicator {
-                width: 20px;
-                height: 20px;
-                border: 2px solid #3498db;
-                border-radius: 4px;
-                background-color: white;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #3498db;
-                image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0iI2ZmZmZmZiI+PHBhdGggZD0iTTEyLjcgNS4zTDcgMTAuN0wzLjMgN2wtMS40IDEuNEw3IDEzLjVsNy4xLTcuMS0xLjQtMS40eiIvPjwvc3ZnPg==);
-            }
-            QCheckBox::indicator:hover {
-                border: 2px solid #2980b9;
-                background-color: #ecf0f1;
-            }
-        """)
         
         # Fade In/Out
         self.fade_in_spin = QDoubleSpinBox()
@@ -251,38 +209,17 @@ class ConfigPanel(QWidget):
         """)
         
         audio_layout.addRow(self.normalize_check)
-        audio_layout.addRow("Fade In:", self.fade_in_spin)
-        audio_layout.addRow("Fade Out:", self.fade_out_spin)
+        audio_layout.addRow("Fade In:               ", self.fade_in_spin)
+        audio_layout.addRow("Fade Out:               ", self.fade_out_spin)
         
         # ===== TÙY CHỌN XÁO TRỘN =====
         shuffle_group = QGroupBox("Xáo Trộn File Âm Thanh")
         shuffle_layout = QVBoxLayout(shuffle_group)
         
+        # Xáo trộn - KHÔNG style sheet
         self.shuffle_check = QCheckBox("Xáo trộn ngẫu nhiên file âm thanh")
         self.shuffle_check.setChecked(False)
         self.shuffle_check.toggled.connect(self.on_shuffle_toggled)
-        self.shuffle_check.setStyleSheet("""
-            QCheckBox {
-                spacing: 8px;
-                font-weight: bold;
-                font-size: 12px;
-            }
-            QCheckBox::indicator {
-                width: 22px;
-                height: 22px;
-                border: 2px solid #e67e22;
-                border-radius: 5px;
-                background-color: white;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #e67e22;
-                image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0iI2ZmZmZmZiI+PHBhdGggZD0iTTEyLjcgNS4zTDcgMTAuN0wzLjMgN2wtMS40IDEuNEw3IDEzLjVsNy4xLTcuMS0xLjQtMS40eiIvPjwvc3ZnPg==);
-            }
-            QCheckBox::indicator:hover {
-                border: 2px solid #d35400;
-                background-color: #fef5e7;
-            }
-        """)
         
         self.shuffle_info_label = QLabel("(Áp dụng khi có 3 file trở lên)")
         self.shuffle_info_label.setStyleSheet("color: #e67e22; font-size: 11px; font-style: italic; padding-left: 30px;")
@@ -389,29 +326,9 @@ class ConfigPanel(QWidget):
         gpu_group = QGroupBox("Mã Hóa")
         gpu_layout = QFormLayout(gpu_group)
         
+        # GPU - KHÔNG style sheet
         self.gpu_check = QCheckBox("Bật mã hóa GPU (NVENC)")
         self.gpu_check.setChecked(True)
-        self.gpu_check.setStyleSheet("""
-            QCheckBox {
-                spacing: 8px;
-                font-weight: bold;
-            }
-            QCheckBox::indicator {
-                width: 20px;
-                height: 20px;
-                border: 2px solid #9b59b6;
-                border-radius: 4px;
-                background-color: white;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #9b59b6;
-                image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0iI2ZmZmZmZiI+PHBhdGggZD0iTTEyLjcgNS4zTDcgMTAuN0wzLjMgN2wtMS40IDEuNEw3IDEzLjVsNy4xLTcuMS0xLjQtMS40eiIvPjwvc3ZnPg==);
-            }
-            QCheckBox::indicator:hover {
-                border: 2px solid #8e44ad;
-                background-color: #f4ecf7;
-            }
-        """)
         
         self.quality_combo = QComboBox()
         self.quality_combo.addItems(["Ultra Fast", "Medium", "High", "Very High", "Ultra High"])
@@ -510,7 +427,7 @@ class ConfigPanel(QWidget):
         layout.addWidget(button_group)
         layout.addWidget(self.info_label)
         
-        # Style chung
+        # Style chung (giữ nguyên, không ảnh hưởng đến checkbox)
         self.setStyleSheet("""
             QWidget {
                 background-color: #ffffff;

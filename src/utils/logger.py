@@ -7,6 +7,32 @@ from pathlib import Path
 from datetime import datetime
 import os
 
+def cleanup_old_logs(log_dir: Path, max_files: int = 5):
+    """
+    Xóa các file log cũ, chỉ giữ lại max_files file mới nhất.
+    
+    Args:
+        log_dir: Thư mục chứa log
+        max_files: Số lượng file log tối đa được giữ lại
+    """
+    try:
+        # Lấy tất cả file .log trong thư mục
+        log_files = list(log_dir.glob("*.log"))
+        if len(log_files) <= max_files:
+            return
+        
+        # Sắp xếp theo thời gian sửa đổi (mới nhất lên đầu)
+        log_files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+        
+        # Xóa các file cũ hơn max_files
+        for f in log_files[max_files:]:
+            f.unlink()
+            # Ghi log nếu logger đã được khởi tạo
+            logging.getLogger().debug(f"Deleted old log file: {f}")
+    except Exception as e:
+        # Không làm crash chương trình nếu có lỗi khi dọn dẹp
+        print(f"Error cleaning up old logs: {e}")
+
 def setup_logger(name: str = "AVAM", log_level: str = "INFO") -> logging.Logger:
     """
     Setup root logger with file and console handlers
@@ -55,6 +81,9 @@ def setup_logger(name: str = "AVAM", log_level: str = "INFO") -> logging.Logger:
     
     root_logger.addHandler(file_handler)
     root_logger.addHandler(console_handler)
+    
+    # Dọn dẹp các file log cũ (giữ lại 5 file mới nhất)
+    cleanup_old_logs(log_dir, max_files=5)
     
     # Log startup
     root_logger.info(f"Logger initialized. Log file: {log_file}")

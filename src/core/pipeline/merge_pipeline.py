@@ -195,7 +195,8 @@ class MergePipeline:
             return f"{size_bytes/1024**3:.1f} GB"
     
     def merge_project(self, project_config: ProjectConfig,
-                     progress_callback: Optional[Callable[[float, str], None]] = None) -> str:
+                     progress_callback: Optional[Callable[[float, str], None]] = None,
+                     create_info_file: bool = True) -> str:
         """
         Merge audio and video based on project configuration
         
@@ -206,6 +207,7 @@ class MergePipeline:
         Returns:
             Path to output video file
         """
+        print(f"[DEBUG] merge_project nhận create_info_file = {create_info_file}")
         try:
             # Update progress
             if progress_callback:
@@ -239,10 +241,12 @@ class MergePipeline:
             )
             
             # STEP 4: Save merge info
-            if progress_callback:
-                progress_callback(95, "Saving merge information...")
-            
-            self._save_merge_info(project_config, output_video)
+            if create_info_file:
+                if progress_callback:
+                    progress_callback(95, "Saving merge information...")
+                self._save_merge_info(project_config, output_video)
+            else:
+                logger.info("Skipping merge info file creation (disabled by user)")
             
             # STEP 5: Clean up
             if progress_callback:
