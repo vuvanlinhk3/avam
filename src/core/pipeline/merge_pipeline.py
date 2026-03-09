@@ -501,7 +501,7 @@ class MergePipeline:
         
         # Add hardware acceleration for decoding
         if output_config.use_gpu and self.gpu_encoder.is_gpu_available():
-            cmd.extend(['-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda'])
+            cmd.extend(['-hwaccel', 'cuda']) 
         
         # Video input (concat)
         cmd.extend([
@@ -513,7 +513,14 @@ class MergePipeline:
         
         # Audio input
         cmd.extend(['-i', audio_path])
-        
+
+        # Thêm scale filter nếu resolution được chỉ định (không phải 'original')
+        if output_config.resolution and output_config.resolution.lower() != 'original':
+            cmd.extend(['-vf', f'scale={output_config.resolution}'])
+
+        # Thêm FPS
+        cmd.extend(['-r', str(output_config.fps)])
+
         # Add filter complex
         if filter_complex:
             cmd.extend(['-filter_complex', filter_complex])
@@ -527,6 +534,19 @@ class MergePipeline:
             if encoder:
                 quality_str = output_config.quality.value
                 encoder_params = self.gpu_encoder.get_encoder_params(encoder, quality_str)
+
+                # Lọc bỏ cặp tham số -b:v <value> (thường là -b:v 0) vì không hợp lệ với NVENC VBR + cq
+                filtered_params = []
+                i = 0
+                while i < len(encoder_params):
+                    if encoder_params[i] == '-b:v':
+                        # Bỏ qua cả -b:v và giá trị kế tiếp
+                        i += 2
+                        continue
+                    filtered_params.append(encoder_params[i])
+                    i += 1
+                encoder_params = filtered_params
+
                 cmd.extend(encoder_params)
             else:
                 cmd.extend(self._get_software_encoder_params(output_config))
@@ -555,13 +575,21 @@ class MergePipeline:
         """Build GPU optimized command for ultra-fast encoding"""
         cmd = [
             '-hwaccel', 'cuda',
-            '-hwaccel_output_format', 'cuda',
+            # '-hwaccel_output_format', 'cuda',
             '-f', 'concat',
             '-safe', '0',
             '-i', video_concat_path,
             '-i', audio_path,
         ]
-        
+
+        # Thêm scale filter
+        if output_config.resolution and output_config.resolution.lower() != 'original':
+            cmd.extend(['-vf', f'scale={output_config.resolution}'])
+
+        # Thêm FPS
+        cmd.extend(['-r', str(output_config.fps)])
+
+
         if filter_complex:
             cmd.extend(['-filter_complex', filter_complex])
             cmd.extend(['-map', '0:v:0', '-map', '[aout]'])
@@ -593,15 +621,23 @@ class MergePipeline:
         return cmd
     
     def _get_software_encoder_params(self, output_config) -> List[str]:
-        """Get software encoder parameters"""
-        quality_profile = EncoderProfiles.get_profile(output_config.quality, use_gpu=False)
+        quality = output_config.quality.value  # 'ultra_fast', 'medium', ...
+        
+        # Map quality với preset và CRF (có thể điều chỉnh theo ý muốn)
+        quality_map = {
+            'ultra_fast': {'preset': 'ultrafast', 'crf': 28},
+            'medium':     {'preset': 'medium',    'crf': 23},
+            'high':       {'preset': 'slow',      'crf': 20},
+            'very_high':  {'preset': 'slower',    'crf': 18},
+            'ultra_high': {'preset': 'veryslow',  'crf': 16}
+        }
+        params = quality_map.get(quality, quality_map['medium'])
         
         return [
             '-c:v', 'libx264',
-            '-preset', 'ultrafast',
-            '-crf', '23',
-            '-profile:v', 'main',
-            '-tune', 'fastdecode',
+            '-preset', params['preset'],
+            '-crf', str(params['crf']),
+            '-profile:v', 'high',
             '-pix_fmt', 'yuv420p',
             '-threads', '0'
         ]

@@ -1063,12 +1063,12 @@ class MainWindow(QMainWindow):
     def estimate_duration_and_size(self, audio_files, video_files, config):
         """
         Tính thời gian xử lý và kích thước file đầu ra ước tính.
-
+        
         Args:
             audio_files: Danh sách đường dẫn file âm thanh
             video_files: Danh sách đường dẫn file video
             config: Dict cấu hình từ ConfigPanel (chứa resolution, quality, use_gpu, ...)
-
+            
         Returns:
             Tuple (thoi_gian_phut, kich_thuoc_gb)
         """
@@ -1081,7 +1081,6 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 print(f"Không thể đọc duration audio {af}: {e}")
 
-        # Nếu không có audio (trường hợp đặc biệt), dùng tổng video
         if total_duration == 0 and video_files:
             for vf in video_files:
                 try:
@@ -1093,7 +1092,7 @@ class MainWindow(QMainWindow):
         if total_duration <= 0:
             return 0.0, 0.0
 
-        # 2. Xác định bitrate video dựa trên độ phân giải và chất lượng
+        # 2. Xác định resolution
         resolution = config.get('resolution', '1920x1080')
         try:
             width, height = map(int, resolution.split('x'))
@@ -1101,28 +1100,45 @@ class MainWindow(QMainWindow):
             width, height = 1920, 1080
 
         quality = config.get('quality', 'high')
-        use_gpu = config.get('use_gpu', True)
+        fps = config.get('fps', 30)
 
-        # Tính số pixel mỗi frame
-        pixels_per_frame = width * height
-
-        # Bitrate cơ sở (bps) dựa trên độ phân giải (ước lượng 0.1 bit/pixel cho medium)
-        base_bitrate = pixels_per_frame * 0.1  # bit per pixel (ước lượng)
-
-        # Điều chỉnh theo chất lượng
-        quality_multipliers = {
-            'ultra_fast': 0.6,
-            'medium': 1.0,
-            'high': 1.5,
-            'very_high': 2.0,
-            'ultra_high': 2.5
+        # 3. Ước lượng bitrate video dựa trên resolution và quality
+        # Các giá trị bitrate (Mbps) tham khảo thực tế cho h.264
+        # Nguồn: streaming, youtube recommendations
+        bitrate_table = {
+            # resolution: (ultra_fast, medium, high, very_high, ultra_high)
+            '426x240':    (0.3, 0.5, 0.8, 1.0, 1.2),
+            '640x360':    (0.5, 0.8, 1.2, 1.5, 1.8),
+            '854x480':    (0.8, 1.2, 1.8, 2.2, 2.5),
+            '1280x720':   (1.5, 2.5, 4.0, 5.0, 6.0),
+            '1920x1080':  (3.0, 5.0, 8.0, 12.0, 16.0),
+            '2560x1440':  (6.0, 9.0, 14.0, 20.0, 25.0),
+            '3840x2160':  (12.0, 18.0, 25.0, 35.0, 45.0),
         }
-        mult = quality_multipliers.get(quality, 1.0)
-
-        video_bitrate_bps = base_bitrate * mult * 30  # nhân với FPS giả định 30
-        # Giới hạn trong khoảng hợp lý (500 Kbps - 50 Mbps)
-        video_bitrate_bps = max(500_000, min(50_000_000, video_bitrate_bps))
-
+        
+        # Tìm resolution gần nhất
+        res_key = f"{width}x{height}"
+        if res_key not in bitrate_table:
+            # Nếu không có, tìm resolution có tổng pixel gần nhất
+            target_pixels = width * height
+            closest_res = min(bitrate_table.keys(), 
+                            key=lambda r: abs(int(r.split('x')[0])*int(r.split('x')[1]) - target_pixels))
+            res_key = closest_res
+        
+        quality_index = {
+            'ultra_fast': 0,
+            'medium': 1,
+            'high': 2,
+            'very_high': 3,
+            'ultra_high': 4
+        }
+        idx = quality_index.get(quality, 2)  # mặc định high
+        video_bitrate_mbps = bitrate_table[res_key][idx]
+        
+        # Điều chỉnh theo FPS (nếu FPS > 30, tăng nhẹ, nếu < 30 giảm)
+        fps_factor = fps / 30.0
+        video_bitrate_mbps *= fps_factor
+        
         # Audio bitrate (kbps) dựa trên chất lượng
         audio_bitrate_kbps_map = {
             'ultra_fast': 128,
@@ -1132,20 +1148,17 @@ class MainWindow(QMainWindow):
             'ultra_high': 384
         }
         audio_bitrate_kbps = audio_bitrate_kbps_map.get(quality, 256)
-
-        # 3. Tính kích thước file (bytes)
-        total_bitrate_bps = video_bitrate_bps + (audio_bitrate_kbps * 1000)
+        
+        # 4. Tính kích thước (bytes)
+        total_bitrate_bps = (video_bitrate_mbps * 1_000_000) + (audio_bitrate_kbps * 1000)
         estimated_size_bytes = total_bitrate_bps * total_duration / 8
         estimated_size_gb = estimated_size_bytes / (1024**3)
-
-        # 4. Tính thời gian xử lý ước tính (phút)
-        # Tốc độ xử lý phụ thuộc vào GPU/CPU, độ phân giải, chất lượng
-        # Ước lượng: GPU xử lý nhanh gấp 3-5 lần CPU
+        
+        # 5. Ước tính thời gian xử lý
+        use_gpu = config.get('use_gpu', True)
         if use_gpu:
-            # GPU: ước tính 2-4x realtime tuỳ độ phân giải
-            speed_factor = 0.3   # 0.3 = nhanh hơn 3 lần realtime
+            speed_factor = 0.3  # nhanh hơn 3 lần realtime
         else:
-            # CPU: chậm hơn realtime, nhất là với ultra_high
             cpu_slowdown = {
                 'ultra_fast': 1.0,
                 'medium': 1.5,
@@ -1154,8 +1167,8 @@ class MainWindow(QMainWindow):
                 'ultra_high': 3.0
             }
             speed_factor = cpu_slowdown.get(quality, 1.5)
-
+        
         estimated_time_seconds = total_duration * speed_factor
         estimated_time_minutes = estimated_time_seconds / 60
-
+        
         return estimated_time_minutes, estimated_size_gb

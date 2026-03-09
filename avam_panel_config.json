@@ -1,17 +1,17 @@
 {
   "mute_video_audio": true,
   "video_volume": 1.0,
-  "audio_volume": 1.0,
+  "audio_volume": 2.0,
   "resolution": "1920x1080",
   "fps": 30,
   "normalize_audio": false,
-  "fade_in_duration": 1.0,
-  "fade_out_duration": 1.0,
+  "fade_in_duration": 0.0,
+  "fade_out_duration": 0.0,
   "shuffle_audio": true,
   "output_dir": "G:\\source_code_vd\\avam_v4\\output",
-  "output_filename": "avam_video.mp4",
+  "output_filename": "avam_video_20260309_125107.mp4",
   "output_format": ".mp4",
-  "output_path": "G:\\source_code_vd\\avam_v4\\output\\avam_video.mp4",
+  "output_path": "G:\\source_code_vd\\avam_v4\\output\\avam_video_20260309_125107.mp4",
   "use_gpu": true,
-  "quality": "ultra_high"
+  "quality": "high"
 }
