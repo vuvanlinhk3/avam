@@ -67,121 +67,90 @@ class MergePipeline:
         ).name
         self.temp_files.append(temp_file)
         return temp_file
+    def _format_size(self, size_bytes: int) -> str:
+        if size_bytes < 1024: return f"{size_bytes} B"
+        elif size_bytes < 1024**2: return f"{size_bytes/1024:.1f} KB"
+        elif size_bytes < 1024**3: return f"{size_bytes/1024**2:.1f} MB"
+        else: return f"{size_bytes/1024**3:.1f} GB"
+
+    def _seconds_to_hms(self, seconds: float) -> str:
+        """Helper to convert seconds to HH:MM:SS format"""
+        h = int(seconds // 3600)
+        m = int((seconds % 3600) // 60)
+        s = int(seconds % 60)
+        return f"{h:02d}:{m:02d}:{s:02d}"
     
     def _save_merge_info(self, project_config: ProjectConfig, output_path: str):
         """
-        Lưu thông tin merge vào file txt
-        
-        Args:
-            project_config: Project configuration
-            output_path: Path to output video
+        Lưu thông tin merge vào file txt với mốc thời gian chi tiết (Start Time & Duration)
         """
         try:
             info = project_config.generate_merge_info()
             info['output_file'] = output_path
             
-            # Lấy thông tin file output
             if os.path.exists(output_path):
                 file_size = os.path.getsize(output_path)
-                info['output_size'] = file_size
                 info['output_size_formatted'] = self._format_size(file_size)
             
-            # Tạo tên file info
             output_dir = Path(output_path).parent
             output_name = Path(output_path).stem
             info_file = output_dir / f"{output_name}_info.txt"
             
-            # Ghi file info
             with open(info_file, 'w', encoding='utf-8') as f:
-                f.write("="*60 + "\n")
+                f.write("="*75 + "\n")
                 f.write(f"AVAM - Auto Video Audio Merger\n")
-                f.write(f"Thông tin xuất video\n")
-                f.write("="*60 + "\n\n")
+                f.write(f"Thông tin xuất video & Mốc thời gian chi tiết\n")
+                f.write("="*75 + "\n\n")
                 
                 f.write(f"Ngày xuất: {info['timestamp']}\n")
                 f.write(f"Tên project: {info['project_name']}\n")
                 f.write(f"File đầu ra: {info['output_file']}\n")
                 f.write(f"Kích thước: {info.get('output_size_formatted', 'N/A')}\n\n")
                 
-                f.write("-"*40 + "\n")
-                f.write("CẤU HÌNH GHÉP:\n")
-                f.write("-"*40 + "\n")
-                f.write(f"• Tắt âm thanh video: {'Có' if info['settings']['mute_video_audio'] else 'Không'}\n")
-                if not info['settings']['mute_video_audio']:
-                    f.write(f"• Âm lượng video: {info['settings']['video_volume']}x\n")
+                f.write("-"*75 + "\n")
+                f.write("CẤU HÌNH HỆ THỐNG:\n")
                 f.write(f"• Âm lượng audio: {info['settings']['audio_volume']}x\n")
-                f.write(f"• Chuẩn hóa âm lượng: {'Có' if info['settings']['normalize_audio'] else 'Không'}\n")
-                f.write(f"• Fade in: {info['settings']['fade_in']}s\n")
-                f.write(f"• Fade out: {info['settings']['fade_out']}s\n")
-                f.write(f"• Xáo trộn audio: {'Có' if info['settings']['shuffle_audio'] else 'Không'}\n")
-                f.write(f"• Độ phân giải: {info['settings']['resolution']}\n")
-                f.write(f"• FPS: {info['settings']['fps']}\n")
-                f.write(f"• Chất lượng: {info['settings']['quality']}\n\n")
+                f.write(f"• Độ phân giải: {info['settings']['resolution']} | FPS: {info['settings']['fps']}\n")
+                f.write("-"*75 + "\n\n")
+
+                f.write("DANH SÁCH NHẠC (TIMELINE):\n")
+                f.write(f"{'STT':<4} | {'Bắt đầu':<10} | {'Thời lượng':<10} | {'Tên file'}\n")
+                f.write("-" * 75 + "\n")
+
+                # Lấy danh sách audio (đã xáo trộn hoặc gốc)
+                audio_files = info['shuffle_info'].get('shuffled_order') if info.get('shuffle_info') else info['audio_files']
                 
-                f.write("-"*40 + "\n")
-                f.write("FILE ÂM THANH (THEO THỨ TỰ GHÉP):\n")
-                f.write("-"*40 + "\n")
-                
-                # Xác định danh sách audio files để hiển thị
-                if info.get('shuffle_info') and info['shuffle_info'].get('shuffled_order'):
-                    # Nếu có xáo trộn, hiển thị theo thứ tự đã xáo trộn
-                    audio_files = info['shuffle_info']['shuffled_order']
-                    f.write(f"(Đã xáo trộn {len(audio_files)} file)\n\n")
-                else:
-                    # Không xáo trộn, hiển thị theo thứ tự gốc
-                    audio_files = info['audio_files']
-                    f.write(f"({len(audio_files)} file)\n\n")
-                
-                # Hiển thị danh sách file
+                current_time_accumulator = 0.0
                 for i, file_path in enumerate(audio_files, 1):
                     file_name = Path(file_path).name
-                    # Thử lấy thời lượng file nếu có thể
+                    duration = 0.0
                     try:
-                        file_info = self.ffmpeg.get_media_info(file_path)
-                        duration = file_info.get('duration', 0)
-                        duration_str = f" ({duration:.1f}s)" if duration > 0 else ""
+                        media_info = self.ffmpeg.get_media_info(file_path)
+                        duration = float(media_info.get('duration', 0))
                     except:
-                        duration_str = ""
-                    f.write(f"{i:2d}. {file_name}{duration_str}\n")
-                
-                # Hiển thị thông tin xáo trộn chi tiết nếu có
-                if info.get('shuffle_info'):
-                    f.write("\n" + "-"*40 + "\n")
-                    f.write("THÔNG TIN XÁO TRỘN CHI TIẾT:\n")
-                    f.write("-"*40 + "\n")
+                        duration = 0.0
                     
-                    if info['shuffle_info'].get('original_order'):
-                        f.write("\nThứ tự gốc:\n")
-                        for i, file_path in enumerate(info['shuffle_info']['original_order'], 1):
-                            file_name = Path(file_path).name
-                            f.write(f"   {i:2d}. {file_name}\n")
+                    start_time_str = self._seconds_to_hms(current_time_accumulator)
+                    duration_str = f"{duration:.1f}s"
                     
-                    f.write(f"\nĐã xáo trộn {len(info['shuffle_info'].get('original_order', []))} file\n")
-                
-                f.write("\n" + "-"*40 + "\n")
-                f.write("FILE VIDEO (THEO THỨ TỰ):\n")
-                f.write("-"*40 + "\n")
+                    f.write(f"{i:<4} | {start_time_str:<10} | {duration_str:<10} | {file_name}\n")
+                    
+                    # Cộng dồn thời gian để tính điểm bắt đầu cho bài tiếp theo
+                    current_time_accumulator += duration
+
+                f.write("-" * 75 + "\n")
+                f.write(f"Tổng thời lượng âm thanh: {self._seconds_to_hms(current_time_accumulator)}\n\n")
+
+                f.write("DANH SÁCH VIDEO SỬ DỤNG:\n")
                 for i, file_path in enumerate(info['video_segments'], 1):
-                    file_name = Path(file_path).name
-                    # Thử lấy thời lượng file nếu có thể
-                    try:
-                        file_info = self.ffmpeg.get_media_info(file_path)
-                        duration = file_info.get('duration', 0)
-                        resolution = f"{file_info.get('width', 0)}x{file_info.get('height', 0)}"
-                        details = f" [{resolution}, {duration:.1f}s]" if duration > 0 else ""
-                    except:
-                        details = ""
-                    f.write(f"{i:2d}. {file_name}{details}\n")
+                    f.write(f"{i:2d}. {Path(file_path).name}\n")
                 
-                f.write("\n" + "="*60 + "\n")
-                f.write("="*60 + "\n")
+                f.write("\n" + "="*75 + "\n")
             
-            logger.info(f"Saved merge info to: {info_file}")
+            logger.info(f"Saved merge info with timeline to: {info_file}")
             
         except Exception as e:
             logger.error(f"Failed to save merge info: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
     
     def _format_size(self, size_bytes: int) -> str:
         """Format file size"""
