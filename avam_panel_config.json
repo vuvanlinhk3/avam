@@ -9,9 +9,9 @@
   "fade_out_duration": 0.0,
   "shuffle_audio": true,
   "output_dir": "G:\\source_code_vd\\avam_v4\\output",
-  "output_filename": "avam_video_20260309_125107.mp4",
+  "output_filename": "avam_video_20260311_122354.mp4",
   "output_format": ".mp4",
-  "output_path": "G:\\source_code_vd\\avam_v4\\output\\avam_video_20260309_125107.mp4",
+  "output_path": "G:\\source_code_vd\\avam_v4\\output\\avam_video_20260311_122354.mp4",
   "use_gpu": true,
   "quality": "high"
 }
